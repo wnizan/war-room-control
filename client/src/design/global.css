@@ -490,3 +490,165 @@ body {
 
 /* ── KPI zone control ───────────────────────────────────────────── */
 .kpi-value.neutral { color: var(--color-text-muted); }
+
+/* ── Restart trigger button (KPI row) ───────────────────────────── */
+.restart-trigger-btn {
+  padding: 4px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.7);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.restart-trigger-btn:hover {
+  background: rgba(239,68,68,0.25);
+  border-color: #ef4444;
+  color: #fff;
+}
+
+/* ── Restart modal overlay ──────────────────────────────────────── */
+.restart-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.restart-dialog {
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+}
+
+.restart-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.restart-dialog-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.restart-close-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: color 0.15s;
+}
+.restart-close-btn:hover { color: var(--color-text-primary); }
+
+.restart-dialog-body {
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.restart-description {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.restart-ratio-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.restart-team-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  min-width: 68px;
+  font-variant-numeric: tabular-nums;
+}
+
+.alpha-label { color: var(--color-alpha); text-align: left; }
+.bravo-label { color: var(--color-bravo); text-align: right; }
+
+.restart-slider {
+  flex: 1;
+  accent-color: #3b82f6;
+  cursor: pointer;
+  height: 4px;
+}
+
+.restart-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+}
+
+.restart-bar-alpha {
+  background: var(--color-alpha);
+  transition: width 0.1s ease;
+}
+
+.restart-bar-bravo {
+  flex: 1;
+  background: var(--color-bravo);
+}
+
+.restart-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--color-border);
+}
+
+.restart-btn-cancel {
+  padding: 7px 18px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.restart-btn-cancel:hover { border-color: var(--color-text-muted); color: var(--color-text-primary); }
+
+.restart-btn-confirm {
+  padding: 7px 22px;
+  background: #ef4444;
+  border: 1px solid #ef4444;
+  border-radius: 5px;
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.restart-btn-confirm:hover:not(:disabled) { background: #dc2626; }
+.restart-btn-confirm:disabled { opacity: 0.5; cursor: default; }

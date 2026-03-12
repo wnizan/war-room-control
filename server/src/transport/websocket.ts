@@ -26,6 +26,16 @@ export class WsTransport {
     ws.send(JSON.stringify(msg));
   }
 
+  broadcastSnapshot(snap: { units: Unit[]; kpi: KPISummary; seq: number }): void {
+    if (this.wss.clients.size === 0) return;
+    const snapshot: SnapshotMessage = { type: 'snapshot', seq: snap.seq, units: snap.units, kpi: snap.kpi };
+    const msg: ServerMessage = { type: 'snapshot', payload: snapshot };
+    const data = JSON.stringify(msg);
+    for (const client of this.wss.clients) {
+      if (client.readyState === WebSocket.OPEN) client.send(data);
+    }
+  }
+
   broadcast(tick: TickUpdate): void {
     if (this.wss.clients.size === 0) return;
     const msg: ServerMessage = { type: 'tick', payload: tick };

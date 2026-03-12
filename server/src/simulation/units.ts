@@ -59,9 +59,11 @@ function ri(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-export function generateUnits(count: number): Map<string, Unit> {
+// alphaRatio: fraction of units assigned to Alpha team (0.0–1.0). Default 0.5.
+export function generateUnits(count: number, alphaRatio = 0.5): Map<string, Unit> {
   const units = new Map<string, Unit>();
-  const half  = Math.floor(count / 2);
+  const alphaCount = Math.round(count * Math.min(1, Math.max(0, alphaRatio)));
+  const half  = alphaCount;
 
   // Spread: HQ units tightly clustered (0.06), FWD/SUPPLY slightly spread
   const STDDEV = 0.07;

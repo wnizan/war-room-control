@@ -205,24 +205,34 @@ function drawSectors(
     ctx.lineWidth   = 1;
     ctx.strokeRect(px, py, pw, ph);
 
+    // Right-side sectors (A2, B2) anchor labels to right edge; left side to left
+    const isRightSector = s === 'A2' || s === 'B2';
     ctx.font = FONT_LABEL;
     ctx.textBaseline = 'top';
     ctx.fillStyle = ZONE_LABEL_COLOR;
-    ctx.fillText(s, px + 8, py + 8);
+    if (isRightSector) {
+      ctx.textAlign = 'right';
+      ctx.fillText(s, px2 - 8, py + 8);
+    } else {
+      ctx.textAlign = 'left';
+      ctx.fillText(s, px + 8, py + 8);
+    }
 
     ctx.font = FONT_SMALL;
     const ctrl = dominance[s];
-    if (ctrl === 'alpha') {
-      ctx.fillStyle = ZONE_CTRL_ALPHA; ctx.globalAlpha = 1;
-      ctx.fillText('[ALPHA]', px + 30, py + 9);
-    } else if (ctrl === 'bravo') {
-      ctx.fillStyle = ZONE_CTRL_BRAVO; ctx.globalAlpha = 1;
-      ctx.fillText('[BRAVO]', px + 30, py + 9);
+    const ctrlLabel = ctrl === 'alpha' ? '[ALPHA]' : ctrl === 'bravo' ? '[BRAVO]' : '[CONTESTED]';
+    if (ctrl === 'alpha') { ctx.fillStyle = ZONE_CTRL_ALPHA; ctx.globalAlpha = 1; }
+    else if (ctrl === 'bravo') { ctx.fillStyle = ZONE_CTRL_BRAVO; ctx.globalAlpha = 1; }
+    else { ctx.fillStyle = ZONE_CTRL_CONTEST; ctx.globalAlpha = 0.7; }
+    if (isRightSector) {
+      ctx.textAlign = 'right';
+      ctx.fillText(ctrlLabel, px2 - 8, py + 22);
     } else {
-      ctx.fillStyle = ZONE_CTRL_CONTEST; ctx.globalAlpha = 0.7;
-      ctx.fillText('[CONTESTED]', px + 30, py + 9);
-      ctx.globalAlpha = 1;
+      ctx.textAlign = 'left';
+      ctx.fillText(ctrlLabel, px + 8, py + 22);
     }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
   }
   ctx.restore();
 }

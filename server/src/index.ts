@@ -20,18 +20,32 @@ const UNIT_COUNT = (() => {
 
 // ── Simulation state ─────────────────────────────────────────────────────────
 console.log(`[boot] Generating ${UNIT_COUNT} units...`);
-const units = generateUnits(UNIT_COUNT);
+let units = generateUnits(UNIT_COUNT);
 let seq = 0;
 console.log(`[boot] ${units.size} units ready.`);
 
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
-const httpServer = createServer(createRequestHandler(() => units));
+// ws is declared here so handleRestart (below) can close over it.
+const httpServer = createServer(createRequestHandler(() => units, handleRestart));
 
 const ws = new WsTransport(httpServer, () => ({
   units: Array.from(units.values()),
   kpi: computeKPI(units, seq),
   seq,
 }));
+
+// ── Restart handler ───────────────────────────────────────────────────────────
+function handleRestart(alphaRatio: number): void {
+  console.log(`[restart] alphaRatio=${alphaRatio.toFixed(2)}`);
+  units = generateUnits(UNIT_COUNT, alphaRatio);
+  seq = 0;
+  ws.broadcastSnapshot({
+    units: Array.from(units.values()),
+    kpi: computeKPI(units, seq),
+    seq,
+  });
+  console.log(`[restart] Done. ${units.size} units regenerated.`);
+}
 
 // ── Simulation loop ───────────────────────────────────────────────────────────
 setInterval(() => {

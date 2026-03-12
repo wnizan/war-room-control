@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { z } from 'zod';
 import type { Unit } from '../../../shared/types.js';
+import { generateUnits } from '../simulation/units.js';
+
+const RestartSchema = z.object({
+  alphaRatio: z.coerce.number().min(0).max(1).default(0.5),
+});
 
 const QuerySchema = z.object({
   status:    z.enum(['active', 'attacking', 'moving', 'idle', 'destroyed']).optional(),
@@ -35,7 +40,10 @@ function json(res: ServerResponse, status: number, data: unknown): void {
   res.end(body);
 }
 
-export function createRequestHandler(getUnits: () => Map<string, Unit>) {
+export function createRequestHandler(
+  getUnits: () => Map<string, Unit>,
+  onRestart: (alphaRatio: number) => void,
+) {
   return function handle(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url ?? '/';
 
@@ -77,6 +85,25 @@ export function createRequestHandler(getUnits: () => Map<string, Unit>) {
       return;
     }
 
+    if (req.method === 'POST' && url === '/api/restart') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      req.on('end', () => {
+        let raw: unknown = {};
+        try { raw = body ? JSON.parse(body) as unknown : {}; } catch { /* invalid JSON → use defaults */ }
+        const parsed = RestartSchema.safeParse(raw);
+        if (!parsed.success) {
+          json(res, 400, { error: 'Invalid body', details: parsed.error.flatten() });
+          return;
+        }
+        onRestart(parsed.data.alphaRatio);
+        json(res, 200, { ok: true, alphaRatio: parsed.data.alphaRatio, units: getUnits().size });
+      });
+      return;
+    }
+
     json(res, 404, { error: 'Not found' });
   };
 }
+
+export { generateUnits };
