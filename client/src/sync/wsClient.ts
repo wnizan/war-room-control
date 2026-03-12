@@ -69,6 +69,7 @@ function connect(): void {
         const { seq, units, kpi } = msg.payload;
         unitsStore.applySnapshot(units, seq);
         kpiStore.update(kpi);
+        eventsStore.clear();   // fresh start — discard stale events from previous session
         reconnectDelay = BASE_DELAY_MS;
         setStatus('connected');
         break;

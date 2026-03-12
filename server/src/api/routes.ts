@@ -29,12 +29,17 @@ function parseQuery(url: string): Record<string, string> {
   return params;
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 function json(res: ServerResponse, status: number, data: unknown): void {
   const body = JSON.stringify(data);
   res.writeHead(status, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    ...CORS_HEADERS,
     'Content-Length': Buffer.byteLength(body),
   });
   res.end(body);
@@ -48,7 +53,7 @@ export function createRequestHandler(
     const url = req.url ?? '/';
 
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
+      res.writeHead(204, CORS_HEADERS);
       res.end();
       return;
     }

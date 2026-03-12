@@ -19,6 +19,11 @@ class EventsStore {
     this._events = [...incoming, ...this._events].slice(0, MAX_EVENTS);
     for (const l of this._listeners) l();
   }
+
+  clear(): void {
+    this._events = [];
+    for (const l of this._listeners) l();
+  }
 }
 
 export const eventsStore = new EventsStore();
