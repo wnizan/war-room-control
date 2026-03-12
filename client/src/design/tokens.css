@@ -1,0 +1,54 @@
+:root {
+  /* Backgrounds */
+  --color-bg-base:        #0a0c10;
+  --color-bg-panel:       #111318;
+  --color-bg-elevated:    #1a1d24;
+  --color-bg-hover:       #20242e;
+
+  /* Borders */
+  --color-border:         #2a2d36;
+  --color-border-subtle:  #1e2028;
+
+  /* Text */
+  --color-text-primary:   #e8eaf0;
+  --color-text-secondary: #8b90a0;
+  --color-text-muted:     #555a6a;
+
+  /* Semantic */
+  --color-success:    #22c55e;
+  --color-warning:    #f59e0b;
+  --color-critical:   #ef4444;
+  --color-inactive:   #555a6a;
+  --color-selected:   #3b82f6;
+
+  /* Teams */
+  --color-alpha:      #3b82f6;
+  --color-bravo:      #f97316;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  --font-size-xs:  11px;
+  --font-size-sm:  12px;
+  --font-size-md:  14px;
+  --font-size-lg:  16px;
+  --font-size-xl:  24px;
+  --font-size-2xl: 32px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold:   700;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Panel */
+  --panel-radius: 6px;
+  --panel-header-height: 40px;
+}
