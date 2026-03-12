@@ -389,8 +389,8 @@ const HOTSPOT_COLS  = 20;
 const HOTSPOT_ROWS  = 20;
 const hotspotGrid   = new Float32Array(HOTSPOT_COLS * HOTSPOT_ROWS);
 let activeHotspotCount = 0;
-const HOTSPOT_DECAY = 0.0015;
-const HOTSPOT_HIT   = 0.22;
+const HOTSPOT_DECAY = 0.006;   // was 0.0015 — decays 4× faster, shows only recent combat
+const HOTSPOT_HIT   = 0.12;   // was 0.22  — smaller per-hit so zones don't saturate instantly
 
 export function addHotspot(x: number, y: number): void {
   const col = Math.min(HOTSPOT_COLS - 1, (x * HOTSPOT_COLS) | 0);
@@ -404,32 +404,33 @@ export function addHotspot(x: number, y: number): void {
 // Pre-built rgba strings keyed by intensity bucket (0–15) to avoid per-frame
 // string allocation. Each bucket represents a 1/16 slice of [0,1].
 // Format: index = Math.min(15, (v * 16) | 0)
+// Opacity targets reduced for balanced visibility (not overwhelming)
 const _HOTSPOT_HALO:   readonly string[] = Array.from({ length: 16 }, (_, i) => {
-  const a = ((i / 16) * 0.07 * 255 + 0.5) | 0;
+  const a = ((i / 16) * 0.04 * 255 + 0.5) | 0;   // was 0.07
   return `rgba(239,68,68,${(a / 255).toFixed(3)})`;
 });
 const _HOTSPOT_CORE1:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
-  const a = ((i / 16) * 0.75 * 255 + 0.5) | 0;
+  const a = ((i / 16) * 0.20 * 255 + 0.5) | 0;   // was 0.75
   return `rgba(255,160,80,${(a / 255).toFixed(3)})`;
 });
 const _HOTSPOT_CORE2:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
-  const a = ((i / 16) * 0.35 * 255 + 0.5) | 0;
+  const a = ((i / 16) * 0.10 * 255 + 0.5) | 0;   // was 0.35
   return `rgba(239,68,68,${(a / 255).toFixed(3)})`;
 });
 const _HOTSPOT_RING1:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
-  const a = ((i / 16) * 0.9 * 255 + 0.5) | 0;
+  const a = ((i / 16) * 0.55 * 255 + 0.5) | 0;   // was 0.9
   return `rgba(255,80,60,${(a / 255).toFixed(3)})`;
 });
 const _HOTSPOT_RING2:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
-  const a = ((i / 16) * 0.6 * 255 + 0.5) | 0;
+  const a = ((i / 16) * 0.35 * 255 + 0.5) | 0;   // was 0.6
   return `rgba(255,160,80,${(a / 255).toFixed(3)})`;
 });
 const _HOTSPOT_CROSS:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
-  const a = ((i / 16) * 0.8 * 255 + 0.5) | 0;
+  const a = ((i / 16) * 0.5 * 255 + 0.5) | 0;    // was 0.8
   return `rgba(255,200,100,${(a / 255).toFixed(3)})`;
 });
 const _HOTSPOT_LABEL:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
-  const a = (Math.min(1, (i / 16) * 1.2) * 255 + 0.5) | 0;
+  const a = (Math.min(1, (i / 16) * 1.0) * 255 + 0.5) | 0;
   return `rgba(255,160,80,${(a / 255).toFixed(3)})`;
 });
 
@@ -462,8 +463,8 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
     const ny = (row + 0.5) / HOTSPOT_ROWS;
     const [cx, cy] = toScreen(nx, ny, W, H);
 
-    const pulse  = Math.sin(now * 0.004) * 0.15 + 0.85;
-    const radius = cellPx * 0.8 * v * pulse;
+    const pulse  = Math.sin(now * 0.004) * 0.1 + 0.9;  // subtler pulse animation
+    const radius = cellPx * 0.5 * v * pulse;             // was 0.8 — smaller footprint
 
     // Bucket index for pre-built color strings (avoids toFixed + string concat)
     const bi = Math.min(15, (v * 16) | 0);
@@ -500,7 +501,7 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
     ctx.stroke();
 
     // Crosshair at centre (medium+ intensity)
-    if (v > 0.3) {
+    if (v > 0.5) {
       const arm = radius * 0.4;
       ctx.strokeStyle = _HOTSPOT_CROSS[bi] ?? _HOTSPOT_CROSS[15]!;
       ctx.lineWidth   = 1;
@@ -510,8 +511,8 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
       ctx.stroke();
     }
 
-    // "CONTACT" label
-    if (v > 0.4) {
+    // "CONTACT" label — only at high intensity so it's not constantly visible
+    if (v > 0.7) {
       ctx.font         = FONT_SMALL;
       ctx.fillStyle    = _HOTSPOT_LABEL[bi] ?? _HOTSPOT_LABEL[15]!;
       ctx.textAlign    = 'center';
