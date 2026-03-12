@@ -1,4 +1,5 @@
 import type { Unit } from '@shared/types';
+import { pulsesStore } from '../store/pulsesStore';
 
 type UnsubscribeFn = () => void;
 
@@ -146,6 +147,12 @@ function sectorOf(u: Unit): SectorId {
   if ( right && !bottom) return 'A2';
   if (!right &&  bottom) return 'B1';
   return 'B2';
+}
+
+let cachedSectorDominance: Record<SectorId, 'alpha' | 'bravo' | 'neutral'> | null = null;
+
+export function invalidateSectorCache(): void {
+  cachedSectorDominance = null;
 }
 
 function computeSectorDominance(units: Map<string, Unit>): Record<SectorId, 'alpha' | 'bravo' | 'neutral'> {
@@ -363,6 +370,7 @@ function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
 const HOTSPOT_COLS  = 20;
 const HOTSPOT_ROWS  = 20;
 const hotspotGrid   = new Float32Array(HOTSPOT_COLS * HOTSPOT_ROWS);
+let activeHotspotCount = 0;
 const HOTSPOT_DECAY = 0.0015;
 const HOTSPOT_HIT   = 0.22;
 
@@ -370,15 +378,27 @@ export function addHotspot(x: number, y: number): void {
   const col = Math.min(HOTSPOT_COLS - 1, (x * HOTSPOT_COLS) | 0);
   const row = Math.min(HOTSPOT_ROWS - 1, (y * HOTSPOT_ROWS) | 0);
   const idx = row * HOTSPOT_COLS + col;
-  hotspotGrid[idx] = Math.min(1, (hotspotGrid[idx] ?? 0) + HOTSPOT_HIT);
+  const prev = hotspotGrid[idx] ?? 0;
+  if (prev === 0) activeHotspotCount++;
+  hotspotGrid[idx] = Math.min(1, prev + HOTSPOT_HIT);
 }
 
 function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: number): void {
   ctx.save();
+
+  // Hoist cellPx — constant for the entire frame
+  const [x1] = toScreen(0, 0, W, H);
+  const [x2] = toScreen(1 / HOTSPOT_COLS, 0, W, H);
+  const cellPx = Math.abs(x2 - x1);
+
   for (let i = 0; i < hotspotGrid.length; i++) {
     const v = hotspotGrid[i] ?? 0;
     if (v < 0.04) {
-      if (v > 0) hotspotGrid[i] = Math.max(0, v - HOTSPOT_DECAY);
+      if (v > 0) {
+        const nv = Math.max(0, v - HOTSPOT_DECAY);
+        if (nv === 0) activeHotspotCount = Math.max(0, activeHotspotCount - 1);
+        hotspotGrid[i] = nv;
+      }
       continue;
     }
 
@@ -389,11 +409,6 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
     const nx = (col + 0.5) / HOTSPOT_COLS;
     const ny = (row + 0.5) / HOTSPOT_ROWS;
     const [cx, cy] = toScreen(nx, ny, W, H);
-
-    // Cell width in screen pixels
-    const [x1] = toScreen(0, 0, W, H);
-    const [x2] = toScreen(1 / HOTSPOT_COLS, 0, W, H);
-    const cellPx = Math.abs(x2 - x1);
 
     const pulse  = Math.sin(now * 0.004) * 0.15 + 0.85;
     const radius = cellPx * 0.8 * v * pulse;
@@ -451,7 +466,9 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
       ctx.textBaseline = 'alphabetic';
     }
 
-    hotspotGrid[i] = Math.max(0, v - HOTSPOT_DECAY);
+    const newV = Math.max(0, v - HOTSPOT_DECAY);
+    if (newV === 0 && v > 0) activeHotspotCount = Math.max(0, activeHotspotCount - 1);
+    hotspotGrid[i] = newV;
   }
   ctx.restore();
 }
@@ -477,7 +494,7 @@ const PULSE_COLORS: Record<PulseType, string> = {
   heal:    '#22c55e',
 };
 
-export function addPulse(unitId: string, x: number, y: number, type: PulseType): void {
+function addPulse(unitId: string, x: number, y: number, type: PulseType): void {
   activePulses.set(unitId, { x, y, startTime: performance.now(), color: PULSE_COLORS[type] });
   if (type === 'attack' || type === 'destroy') addHotspot(x, y);
 }
@@ -558,17 +575,17 @@ export function startRenderLoop(
   let dirty = true;
   let rafId = 0;
 
-  const unsubscribeUnits     = subscribe(() => { dirty = true; });
+  const unsubscribeUnits     = subscribe(() => { dirty = true; invalidateSectorCache(); });
   const unsubscribeSelection = subscribeSelection(() => { dirty = true; });
+  const unsubscribePulses    = pulsesStore.subscribe(() => {
+    for (const entry of pulsesStore.drain()) {
+      addPulse(entry.id, entry.x, entry.y, entry.type);
+    }
+  });
 
   function hasPulses(): boolean { return activePulses.size > 0; }
 
-  function hasActiveHotspots(): boolean {
-    for (let i = 0; i < hotspotGrid.length; i++) {
-      if ((hotspotGrid[i] ?? 0) >= 0.04) return true;
-    }
-    return false;
-  }
+  function hasActiveHotspots(): boolean { return activeHotspotCount > 0; }
 
   function draw(): void {
     const W = canvas.width, H = canvas.height;
@@ -587,7 +604,8 @@ export function startRenderLoop(
     ctx.drawImage(terrainCanvas, 0, 0);
 
     // Layer 1: Sectors
-    drawSectors(ctx, W, H, computeSectorDominance(units));
+    if (!cachedSectorDominance) cachedSectorDominance = computeSectorDominance(units);
+    drawSectors(ctx, W, H, cachedSectorDominance);
 
     // Layer 2: Bases
     drawBases(ctx, W, H);
@@ -595,48 +613,52 @@ export function startRenderLoop(
     // Layer 3: Hotspots
     drawHotspots(ctx, W, H, now);
 
-    // Layer 4: Units (5 passes)
+    // Layer 4: Units — single classification pass, then batch render per bucket
     const size3 = Math.max(1, Math.round(3 * scale));
     const size4 = Math.max(1, Math.round(4 * scale));
     const size1 = Math.max(1, Math.round(1 * scale));
 
-    ctx.fillStyle = COLOR_ALPHA;
+    const bAlpha:   number[] = [];
+    const bBravo:   number[] = [];
+    const bDamaged: number[] = [];
+    const bAttack:  number[] = [];
+    const bDead:    number[] = [];
+
     for (const u of units.values()) {
-      if (u.team !== 'alpha' || u.status === 'destroyed' || u.status === 'attacking') continue;
-      if (u.health < LOW_HEALTH_THRESHOLD) continue;
-      const [x, y] = toScreen(u.x, u.y, W, H);
-      ctx.fillRect(x | 0, y | 0, size3, size3);
+      const [sx, sy] = toScreen(u.x, u.y, W, H);
+      const px = sx | 0, py = sy | 0;
+      if (u.status === 'destroyed') {
+        bDead.push(px, py);
+      } else if (u.status === 'attacking') {
+        bAttack.push(px, py);
+      } else if (u.health < LOW_HEALTH_THRESHOLD) {
+        bDamaged.push(px, py);
+      } else if (u.team === 'alpha') {
+        bAlpha.push(px, py);
+      } else {
+        bBravo.push(px, py);
+      }
     }
+
+    ctx.fillStyle = COLOR_ALPHA;
+    for (let i = 0; i < bAlpha.length; i += 2)
+      ctx.fillRect(bAlpha[i]!, bAlpha[i + 1]!, size3, size3);
 
     ctx.fillStyle = COLOR_BRAVO;
-    for (const u of units.values()) {
-      if (u.team !== 'bravo' || u.status === 'destroyed' || u.status === 'attacking') continue;
-      if (u.health < LOW_HEALTH_THRESHOLD) continue;
-      const [x, y] = toScreen(u.x, u.y, W, H);
-      ctx.fillRect(x | 0, y | 0, size3, size3);
-    }
+    for (let i = 0; i < bBravo.length; i += 2)
+      ctx.fillRect(bBravo[i]!, bBravo[i + 1]!, size3, size3);
 
     ctx.fillStyle = COLOR_DAMAGED;
-    for (const u of units.values()) {
-      if (u.status === 'destroyed' || u.status === 'attacking') continue;
-      if (u.health >= LOW_HEALTH_THRESHOLD) continue;
-      const [x, y] = toScreen(u.x, u.y, W, H);
-      ctx.fillRect(x | 0, y | 0, size3, size3);
-    }
+    for (let i = 0; i < bDamaged.length; i += 2)
+      ctx.fillRect(bDamaged[i]!, bDamaged[i + 1]!, size3, size3);
 
     ctx.fillStyle = COLOR_ATTACK;
-    for (const u of units.values()) {
-      if (u.status !== 'attacking') continue;
-      const [x, y] = toScreen(u.x, u.y, W, H);
-      ctx.fillRect(x | 0, y | 0, size4, size4);
-    }
+    for (let i = 0; i < bAttack.length; i += 2)
+      ctx.fillRect(bAttack[i]!, bAttack[i + 1]!, size4, size4);
 
     ctx.fillStyle = COLOR_DEAD;
-    for (const u of units.values()) {
-      if (u.status !== 'destroyed') continue;
-      const [x, y] = toScreen(u.x, u.y, W, H);
-      ctx.fillRect(x | 0, y | 0, size1, size1);
-    }
+    for (let i = 0; i < bDead.length; i += 2)
+      ctx.fillRect(bDead[i]!, bDead[i + 1]!, size1, size1);
 
     // Layer 5: Pulses
     drawPulses(ctx, W, H, now);
@@ -670,5 +692,6 @@ export function startRenderLoop(
     cancelAnimationFrame(rafId);
     unsubscribeUnits();
     unsubscribeSelection();
+    unsubscribePulses();
   };
 }

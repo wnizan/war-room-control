@@ -3,7 +3,7 @@ import { unitsStore } from '../store/unitsStore';
 import { kpiStore } from '../store/kpiStore';
 import { eventsStore } from '../store/eventsStore';
 import { recordTickUpdate } from '../observability/usePerformanceMetrics';
-import { addPulse } from '../map/renderLoop';
+import { pulsesStore } from '../store/pulsesStore';
 
 const WS_URL = import.meta.env.DEV
   ? 'ws://localhost:3001'
@@ -49,7 +49,20 @@ function connect(): void {
   ws = new WebSocket(WS_URL);
 
   ws.onmessage = ({ data }: MessageEvent<string>) => {
-    const msg = JSON.parse(data) as ServerMessage;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data) as unknown;
+    } catch {
+      console.error('[ws] invalid JSON received');
+      return;
+    }
+
+    if (typeof parsed !== 'object' || parsed === null || !('type' in parsed)) {
+      console.error('[ws] unexpected message shape:', parsed);
+      return;
+    }
+
+    const msg = parsed as ServerMessage;
 
     switch (msg.type) {
       case 'snapshot': {
@@ -85,13 +98,13 @@ function connect(): void {
 
           switch (ev.type) {
             case 'attack':
-              addPulse(ev.id, unit.x, unit.y, 'attack');
+              pulsesStore.enqueue({ id: ev.id, x: unit.x, y: unit.y, type: 'attack' });
               break;
             case 'destroyed':
-              addPulse(ev.id, unit.x, unit.y, 'destroy');
+              pulsesStore.enqueue({ id: ev.id, x: unit.x, y: unit.y, type: 'destroy' });
               break;
             case 'heal':
-              addPulse(ev.id, unit.x, unit.y, 'heal');
+              pulsesStore.enqueue({ id: ev.id, x: unit.x, y: unit.y, type: 'heal' });
               break;
             // 'capture' — no pulse by design; extend here if needed
           }
