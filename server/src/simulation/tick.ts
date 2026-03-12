@@ -27,6 +27,28 @@ function pickRandom<T>(arr: T[]): T | undefined {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// Sample up to `sampleSize` random enemies, return the closest one.
+// O(sampleSize) instead of O(n) — avoids scanning all 10k enemies per attacker.
+function pickNearest(
+  units: Map<string, Unit>,
+  attacker: Unit,
+  enemyIds: string[],
+  sampleSize: number,
+): string | undefined {
+  if (enemyIds.length === 0) return undefined;
+  const sample = sampleIds(enemyIds, Math.min(sampleSize, enemyIds.length));
+  let bestId: string | undefined;
+  let bestDist = Infinity;
+  for (const id of sample) {
+    const e = units.get(id);
+    if (!e || e.status === 'destroyed') continue;
+    const dx = e.x - attacker.x, dy = e.y - attacker.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestDist) { bestDist = d2; bestId = id; }
+  }
+  return bestId;
+}
+
 function sampleIds(ids: string[], count: number): string[] {
   const arr = ids.slice();
   const n = Math.min(count, arr.length);
@@ -92,9 +114,9 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
       deltaMap.set(id, { ...deltaMap.get(id), id, x: nx, y: ny, status: 'moving' });
 
     } else if (r < 0.58) {
-      // Attack nearest enemy
+      // Attack nearest enemy (proximity-based — pulses appear at actual contact zones)
       const enemyPool = unit.team === 'alpha' ? aliveBravo : aliveAlpha;
-      const targetId  = pickRandom(enemyPool);
+      const targetId  = pickNearest(units, unit, enemyPool, 12);
       if (targetId !== undefined) {
         const target = units.get(targetId);
         if (target && target.status !== 'destroyed') {
