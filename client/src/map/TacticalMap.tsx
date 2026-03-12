@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { unitsStore } from '../store/unitsStore';
 import { selectionStore } from '../store/selectionStore';
-import { startRenderLoop, setUnitScale, setZoom, resetZoom } from './renderLoop';
+import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom } from './renderLoop';
 
 export function TacticalMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,9 +28,48 @@ export function TacticalMap() {
       selectionStore.subscribe,
     );
 
+    // Drag-to-pan
+    const cv: HTMLCanvasElement = canvas;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    function onPointerDown(e: PointerEvent): void {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      cv.setPointerCapture(e.pointerId);
+      cv.style.cursor = 'grabbing';
+    }
+
+    function onPointerMove(e: PointerEvent): void {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      const zoom = getZoom();
+      panViewport(-(dx / (cv.width * zoom)), -(dy / (cv.height * zoom)));
+    }
+
+    function onPointerUp(): void {
+      dragging = false;
+      cv.style.cursor = 'grab';
+    }
+
+    cv.style.cursor = 'grab';
+    cv.addEventListener('pointerdown', onPointerDown);
+    cv.addEventListener('pointermove', onPointerMove);
+    cv.addEventListener('pointerup', onPointerUp);
+    cv.addEventListener('pointerleave', onPointerUp);
+
     return () => {
       stop();
       ro.disconnect();
+      cv.removeEventListener('pointerdown', onPointerDown);
+      cv.removeEventListener('pointermove', onPointerMove);
+      cv.removeEventListener('pointerup', onPointerUp);
+      cv.removeEventListener('pointerleave', onPointerUp);
     };
   }, []);
 

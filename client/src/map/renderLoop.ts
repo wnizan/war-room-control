@@ -24,7 +24,7 @@ interface Viewport {
 let viewport: Viewport = { zoom: 1, cx: 0.5, cy: 0.5 };
 
 export function setZoom(delta: number): void {
-  const next = Math.min(8, Math.max(1, viewport.zoom * delta));
+  const next = Math.min(8, Math.max(1, viewport.zoom + delta));
   viewport = { ...viewport, zoom: next };
   markDirty();
 }
@@ -32,6 +32,10 @@ export function setZoom(delta: number): void {
 export function resetZoom(): void {
   viewport = { zoom: 1, cx: 0.5, cy: 0.5 };
   markDirty();
+}
+
+export function getZoom(): number {
+  return viewport.zoom;
 }
 
 export function panViewport(dx: number, dy: number): void {
@@ -233,8 +237,8 @@ const MAP_BASES: MapBase[] = [
 ];
 
 // Sizes per base type
-const BASE_RADIUS: Record<BaseType, number> = { HQ: 42, FWD: 28, SUPPLY: 22 };
-const BASE_ICON_SIZE: Record<BaseType, number> = { HQ: 10, FWD: 7, SUPPLY: 6 };
+const BASE_RADIUS: Record<BaseType, number> = { HQ: 46, FWD: 32, SUPPLY: 26 };
+const BASE_ICON_SIZE: Record<BaseType, number> = { HQ: 11, FWD: 9, SUPPLY: 8 };
 
 function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
   ctx.save();
@@ -249,9 +253,9 @@ function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
     ctx.beginPath();
     ctx.arc(px, py, radius, 0, Math.PI * 2);
     ctx.strokeStyle = color;
-    ctx.globalAlpha = base.shortType === 'HQ' ? 0.5 : 0.35;
-    ctx.setLineDash(base.shortType === 'HQ' ? [] : [5, 4]);
-    ctx.lineWidth   = base.shortType === 'HQ' ? 1.5 : 1;
+    ctx.globalAlpha = base.shortType === 'HQ' ? 0.75 : 0.55;
+    ctx.setLineDash(base.shortType === 'HQ' ? [] : [6, 3]);
+    ctx.lineWidth   = base.shortType === 'HQ' ? 2.5 : 1.5;
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
@@ -274,17 +278,57 @@ function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
     }
     ctx.globalAlpha = 1;
 
-    // ── Outer glow for HQ ─────────────────────────────────────────
+    // ── Glow / shape distinction per type ────────────────────────
     if (base.shortType === 'HQ') {
-      const grad = ctx.createRadialGradient(px, py, iconSize, px, py, radius * 0.8);
-      grad.addColorStop(0, color.replace('#', 'rgba(') + ',0.08)');
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      // Simple approximation: just fill the area
+      // Two-pass glow
       ctx.beginPath();
-      ctx.arc(px, py, radius * 0.8, 0, Math.PI * 2);
+      ctx.arc(px, py, radius * 1.1, 0, Math.PI * 2);
       ctx.fillStyle   = color;
-      ctx.globalAlpha = 0.06;
+      ctx.globalAlpha = 0.04;
       ctx.fill();
+      ctx.beginPath();
+      ctx.arc(px, py, radius * 0.65, 0, Math.PI * 2);
+      ctx.fillStyle   = color;
+      ctx.globalAlpha = 0.14;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Diamond outer ring
+      const s = radius * 0.9;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(Math.PI / 4);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth   = 1.5;
+      ctx.strokeRect(-s, -s, s * 2, s * 2);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+    if (base.shortType === 'FWD') {
+      // Second concentric dashed ring
+      ctx.beginPath();
+      ctx.arc(px, py, radius * 0.55, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.45;
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+    if (base.shortType === 'SUPPLY') {
+      // Four tick marks at cardinal points
+      const r = radius;
+      const tl = 6;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.65;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(px,     py - r);       ctx.lineTo(px,         py - r - tl);
+      ctx.moveTo(px,     py + r);       ctx.lineTo(px,         py + r + tl);
+      ctx.moveTo(px - r, py);           ctx.lineTo(px - r - tl, py);
+      ctx.moveTo(px + r, py);           ctx.lineTo(px + r + tl, py);
+      ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
@@ -354,30 +398,55 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
     const pulse  = Math.sin(now * 0.004) * 0.15 + 0.85;
     const radius = cellPx * 0.8 * v * pulse;
 
-    // Outer ring (visible border)
+    // Outer halo (large threat area)
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(239,68,68,' + (v * 0.7).toFixed(2) + ')';
-    ctx.lineWidth   = 1;
-    ctx.stroke();
+    ctx.arc(cx, cy, radius * 1.7, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(239,68,68,' + (v * 0.07).toFixed(2) + ')';
+    ctx.fill();
 
-    // Fill glow
+    // Inner core gradient (bright orange center → red edge)
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    grad.addColorStop(0, 'rgba(239,68,68,' + (v * 0.45).toFixed(2) + ')');
-    grad.addColorStop(0.5, 'rgba(239,68,68,' + (v * 0.2).toFixed(2) + ')');
-    grad.addColorStop(1, 'rgba(239,68,68,0)');
+    grad.addColorStop(0,   'rgba(255,160,80,' + (v * 0.75).toFixed(2) + ')');
+    grad.addColorStop(0.3, 'rgba(239,68,68,'  + (v * 0.55).toFixed(2) + ')');
+    grad.addColorStop(0.7, 'rgba(239,68,68,'  + (v * 0.22).toFixed(2) + ')');
+    grad.addColorStop(1,   'rgba(239,68,68,0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    // "CONTACT" label at high intensity
-    if (v > 0.6) {
-      ctx.font        = '8px Inter, system-ui, sans-serif';
-      ctx.fillStyle   = 'rgba(255,120,120,' + v.toFixed(2) + ')';
+    // Pulsing outer ring (thick, high opacity)
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,80,60,' + (v * 0.9).toFixed(2) + ')';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+
+    // Secondary inner ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.55, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,160,80,' + (v * 0.6).toFixed(2) + ')';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    // Crosshair at centre (medium+ intensity)
+    if (v > 0.3) {
+      const arm = radius * 0.4;
+      ctx.strokeStyle = 'rgba(255,200,100,' + (v * 0.8).toFixed(2) + ')';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - arm, cy); ctx.lineTo(cx + arm, cy);
+      ctx.moveTo(cx, cy - arm); ctx.lineTo(cx, cy + arm);
+      ctx.stroke();
+    }
+
+    // "CONTACT" label (lower threshold, larger font)
+    if (v > 0.4) {
+      ctx.font        = '9px Inter, system-ui, sans-serif';
+      ctx.fillStyle   = 'rgba(255,160,80,' + Math.min(1, v * 1.2).toFixed(2) + ')';
       ctx.textAlign   = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText('CONTACT', cx, cy - radius - 2);
+      ctx.fillText('CONTACT', cx, cy - radius - 3);
       ctx.textAlign   = 'start';
       ctx.textBaseline = 'alphabetic';
     }
