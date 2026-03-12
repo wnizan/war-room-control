@@ -89,6 +89,14 @@ const ZONE_CTRL_CONTEST = 'rgba(251,191,36,0.9)';
 const LOW_HEALTH_THRESHOLD = 25;
 
 // ---------------------------------------------------------------------------
+// Font constants — defined once, reused everywhere to avoid repeated parsing
+// ---------------------------------------------------------------------------
+const FONT_TINY   = '8px Inter, system-ui, sans-serif';
+const FONT_SMALL  = '9px Inter, system-ui, sans-serif';
+const FONT_NORMAL = '10px Inter, system-ui, sans-serif';
+const FONT_LABEL  = '11px Inter, system-ui, sans-serif';
+
+// ---------------------------------------------------------------------------
 // Layer 0b: Terrain (offscreen canvas, rebuilt on resize only)
 // ---------------------------------------------------------------------------
 
@@ -197,12 +205,12 @@ function drawSectors(
     ctx.lineWidth   = 1;
     ctx.strokeRect(px, py, pw, ph);
 
-    ctx.font = '11px Inter, system-ui, sans-serif';
+    ctx.font = FONT_LABEL;
     ctx.textBaseline = 'top';
     ctx.fillStyle = ZONE_LABEL_COLOR;
     ctx.fillText(s, px + 8, py + 8);
 
-    ctx.font = '9px Inter, system-ui, sans-serif';
+    ctx.font = FONT_SMALL;
     const ctrl = dominance[s];
     if (ctrl === 'alpha') {
       ctx.fillStyle = ZONE_CTRL_ALPHA; ctx.globalAlpha = 1;
@@ -278,7 +286,7 @@ function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
     if (base.shortType === 'HQ') {
       ctx.globalAlpha = 1;
       ctx.fillStyle   = '#000';
-      ctx.font        = `bold ${iconSize}px Inter, system-ui, sans-serif`;
+      ctx.font        = `bold ${iconSize}px Inter,system-ui,sans-serif`;
       ctx.textAlign   = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('HQ', px, py + 0.5);
@@ -342,7 +350,7 @@ function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
     // ── Label above ────────────────────────────────────────────────
     ctx.fillStyle    = '#fff';
     ctx.globalAlpha  = 0.9;
-    ctx.font         = `bold ${base.shortType === 'HQ' ? 11 : 9}px Inter, system-ui, sans-serif`;
+    ctx.font         = base.shortType === 'HQ' ? `bold 11px Inter,system-ui,sans-serif` : `bold 9px Inter,system-ui,sans-serif`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(base.label, px, py - iconSize - 3);
@@ -351,7 +359,7 @@ function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
     if (base.shortType !== 'HQ') {
       ctx.fillStyle   = color;
       ctx.globalAlpha = 0.8;
-      ctx.font        = '8px Inter, system-ui, sans-serif';
+      ctx.font        = FONT_TINY;
       ctx.textBaseline = 'top';
       ctx.fillText(base.shortType, px, py + iconSize + 2);
     }
@@ -383,6 +391,38 @@ export function addHotspot(x: number, y: number): void {
   hotspotGrid[idx] = Math.min(1, prev + HOTSPOT_HIT);
 }
 
+// Pre-built rgba strings keyed by intensity bucket (0–15) to avoid per-frame
+// string allocation. Each bucket represents a 1/16 slice of [0,1].
+// Format: index = Math.min(15, (v * 16) | 0)
+const _HOTSPOT_HALO:   readonly string[] = Array.from({ length: 16 }, (_, i) => {
+  const a = ((i / 16) * 0.07 * 255 + 0.5) | 0;
+  return `rgba(239,68,68,${(a / 255).toFixed(3)})`;
+});
+const _HOTSPOT_CORE1:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
+  const a = ((i / 16) * 0.75 * 255 + 0.5) | 0;
+  return `rgba(255,160,80,${(a / 255).toFixed(3)})`;
+});
+const _HOTSPOT_CORE2:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
+  const a = ((i / 16) * 0.35 * 255 + 0.5) | 0;
+  return `rgba(239,68,68,${(a / 255).toFixed(3)})`;
+});
+const _HOTSPOT_RING1:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
+  const a = ((i / 16) * 0.9 * 255 + 0.5) | 0;
+  return `rgba(255,80,60,${(a / 255).toFixed(3)})`;
+});
+const _HOTSPOT_RING2:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
+  const a = ((i / 16) * 0.6 * 255 + 0.5) | 0;
+  return `rgba(255,160,80,${(a / 255).toFixed(3)})`;
+});
+const _HOTSPOT_CROSS:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
+  const a = ((i / 16) * 0.8 * 255 + 0.5) | 0;
+  return `rgba(255,200,100,${(a / 255).toFixed(3)})`;
+});
+const _HOTSPOT_LABEL:  readonly string[] = Array.from({ length: 16 }, (_, i) => {
+  const a = (Math.min(1, (i / 16) * 1.2) * 255 + 0.5) | 0;
+  return `rgba(255,160,80,${(a / 255).toFixed(3)})`;
+});
+
 function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: number): void {
   ctx.save();
 
@@ -390,6 +430,8 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
   const [x1] = toScreen(0, 0, W, H);
   const [x2] = toScreen(1 / HOTSPOT_COLS, 0, W, H);
   const cellPx = Math.abs(x2 - x1);
+
+  const PI2 = Math.PI * 2;
 
   for (let i = 0; i < hotspotGrid.length; i++) {
     const v = hotspotGrid[i] ?? 0;
@@ -413,41 +455,44 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
     const pulse  = Math.sin(now * 0.004) * 0.15 + 0.85;
     const radius = cellPx * 0.8 * v * pulse;
 
-    // Outer halo (large threat area)
+    // Bucket index for pre-built color strings (avoids toFixed + string concat)
+    const bi = Math.min(15, (v * 16) | 0);
+
+    // Outer halo (large threat area) — no gradient, single fill
     ctx.beginPath();
-    ctx.arc(cx, cy, radius * 1.7, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(239,68,68,' + (v * 0.07).toFixed(2) + ')';
+    ctx.arc(cx, cy, radius * 1.7, 0, PI2);
+    ctx.fillStyle = _HOTSPOT_HALO[bi] ?? _HOTSPOT_HALO[15]!;
     ctx.fill();
 
-    // Inner core gradient (bright orange center → red edge)
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    grad.addColorStop(0,   'rgba(255,160,80,' + (v * 0.75).toFixed(2) + ')');
-    grad.addColorStop(0.3, 'rgba(239,68,68,'  + (v * 0.55).toFixed(2) + ')');
-    grad.addColorStop(0.7, 'rgba(239,68,68,'  + (v * 0.22).toFixed(2) + ')');
-    grad.addColorStop(1,   'rgba(239,68,68,0)');
-    ctx.fillStyle = grad;
+    // Inner core — two concentric fills replace the RadialGradient
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.arc(cx, cy, radius, 0, PI2);
+    ctx.fillStyle = _HOTSPOT_CORE2[bi] ?? _HOTSPOT_CORE2[15]!;
     ctx.fill();
 
-    // Pulsing outer ring (thick, high opacity)
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,80,60,' + (v * 0.9).toFixed(2) + ')';
+    ctx.arc(cx, cy, radius * 0.45, 0, PI2);
+    ctx.fillStyle = _HOTSPOT_CORE1[bi] ?? _HOTSPOT_CORE1[15]!;
+    ctx.fill();
+
+    // Pulsing outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, PI2);
+    ctx.strokeStyle = _HOTSPOT_RING1[bi] ?? _HOTSPOT_RING1[15]!;
     ctx.lineWidth   = 2;
     ctx.stroke();
 
     // Secondary inner ring
     ctx.beginPath();
-    ctx.arc(cx, cy, radius * 0.55, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,160,80,' + (v * 0.6).toFixed(2) + ')';
+    ctx.arc(cx, cy, radius * 0.55, 0, PI2);
+    ctx.strokeStyle = _HOTSPOT_RING2[bi] ?? _HOTSPOT_RING2[15]!;
     ctx.lineWidth   = 1;
     ctx.stroke();
 
     // Crosshair at centre (medium+ intensity)
     if (v > 0.3) {
       const arm = radius * 0.4;
-      ctx.strokeStyle = 'rgba(255,200,100,' + (v * 0.8).toFixed(2) + ')';
+      ctx.strokeStyle = _HOTSPOT_CROSS[bi] ?? _HOTSPOT_CROSS[15]!;
       ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(cx - arm, cy); ctx.lineTo(cx + arm, cy);
@@ -455,14 +500,14 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
       ctx.stroke();
     }
 
-    // "CONTACT" label (lower threshold, larger font)
+    // "CONTACT" label
     if (v > 0.4) {
-      ctx.font        = '9px Inter, system-ui, sans-serif';
-      ctx.fillStyle   = 'rgba(255,160,80,' + Math.min(1, v * 1.2).toFixed(2) + ')';
-      ctx.textAlign   = 'center';
+      ctx.font         = FONT_SMALL;
+      ctx.fillStyle    = _HOTSPOT_LABEL[bi] ?? _HOTSPOT_LABEL[15]!;
+      ctx.textAlign    = 'center';
       ctx.textBaseline = 'bottom';
       ctx.fillText('CONTACT', cx, cy - radius - 3);
-      ctx.textAlign   = 'start';
+      ctx.textAlign    = 'start';
       ctx.textBaseline = 'alphabetic';
     }
 
@@ -558,6 +603,35 @@ function drawSelection(
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Reset — call before (re)mounting to clear all stale module globals
+// ---------------------------------------------------------------------------
+
+export function resetRenderState(): void {
+  // Viewport
+  viewport = { zoom: 1, cx: 0.5, cy: 0.5 };
+  _dirty = false;
+
+  // Terrain
+  terrainCanvas = null;
+  terrainW = 0;
+  terrainH = 0;
+
+  // Sector cache
+  cachedSectorDominance = null;
+
+  // Hotspot grid
+  hotspotGrid.fill(0);
+  activeHotspotCount = 0;
+
+  // Pulses
+  activePulses.clear();
+
+  // Unit scale
+  unitScale = 1.0;
+}
+
+// ---------------------------------------------------------------------------
 // Main render loop
 // ---------------------------------------------------------------------------
 
@@ -568,6 +642,8 @@ export function startRenderLoop(
   getSelectedId: () => string | null,
   subscribeSelection: (cb: () => void) => UnsubscribeFn,
 ): UnsubscribeFn {
+  resetRenderState();
+
   const ctxOrNull = canvas.getContext('2d');
   if (!ctxOrNull) return () => { /* no-op */ };
   const ctx: CanvasRenderingContext2D = ctxOrNull;
@@ -669,7 +745,7 @@ export function startRenderLoop(
     // Zoom level indicator
     if (viewport.zoom > 1) {
       ctx.save();
-      ctx.font        = '10px Inter, system-ui, sans-serif';
+      ctx.font        = FONT_NORMAL;
       ctx.fillStyle   = 'rgba(255,255,255,0.5)';
       ctx.textAlign   = 'right';
       ctx.textBaseline = 'top';
