@@ -1,10 +1,18 @@
 import { randomUUID } from 'crypto';
 import type { Unit, UnitDelta, TickUpdate, GameEvent, KPISummary } from '../../../shared/types.js';
 
-const TICK_MIN = 200;
-const TICK_MAX = 350;
-const MOVE_DELTA = 0.015;
+const TICK_MIN  = 200;
+const TICK_MAX  = 350;
 const EVENT_CAP = 25;
+
+// Normal random move delta
+const MOVE_RANDOM  = 0.010;
+// Advance toward enemy objective (conquest pull)
+const MOVE_ADVANCE = 0.003;
+
+// Enemy objectives: alpha advances toward bravo HQ, bravo toward alpha HQ
+const ALPHA_OBJECTIVE = { x: 0.88, y: 0.85 };  // Bravo HQ
+const BRAVO_OBJECTIVE = { x: 0.12, y: 0.15 };  // Alpha HQ
 
 function ri(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -19,7 +27,6 @@ function pickRandom<T>(arr: T[]): T | undefined {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Partial Fisher-Yates: shuffle first `count` elements in-place, return them
 function sampleIds(ids: string[], count: number): string[] {
   const arr = ids.slice();
   const n = Math.min(count, arr.length);
@@ -32,10 +39,30 @@ function sampleIds(ids: string[], count: number): string[] {
   return arr.slice(0, n);
 }
 
+// Move a unit: mix of random drift + directional advance toward objective
+function advanceMove(unit: Unit): { nx: number; ny: number } {
+  const obj = unit.team === 'alpha' ? ALPHA_OBJECTIVE : BRAVO_OBJECTIVE;
+  const dx = obj.x - unit.x;
+  const dy = obj.y - unit.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  // Advance component (normalised direction * step), only when not already close
+  const advX = dist > 0.05 ? (dx / dist) * MOVE_ADVANCE : 0;
+  const advY = dist > 0.05 ? (dy / dist) * MOVE_ADVANCE : 0;
+
+  // Random component
+  const rndX = (Math.random() - 0.5) * MOVE_RANDOM;
+  const rndY = (Math.random() - 0.5) * MOVE_RANDOM;
+
+  return {
+    nx: clamp(unit.x + advX + rndX, 0, 1),
+    ny: clamp(unit.y + advY + rndY, 0, 1),
+  };
+}
+
 export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
   const timestamp = Date.now();
 
-  // Pre-compute alive pools per team for O(1) enemy selection
   const aliveAlpha: string[] = [];
   const aliveBravo: string[] = [];
   for (const [id, u] of units) {
@@ -45,9 +72,9 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
     }
   }
 
-  const allAlive = [...aliveAlpha, ...aliveBravo];
+  const allAlive  = [...aliveAlpha, ...aliveBravo];
   const tickCount = ri(TICK_MIN, TICK_MAX);
-  const selected = sampleIds(allAlive, tickCount);
+  const selected  = sampleIds(allAlive, tickCount);
 
   const deltaMap = new Map<string, UnitDelta>();
   const events: GameEvent[] = [];
@@ -58,23 +85,20 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
 
     const r = Math.random();
 
-    if (r < 0.35) {
-      // move
-      const nx = clamp(unit.x + (Math.random() - 0.5) * MOVE_DELTA, 0, 1);
-      const ny = clamp(unit.y + (Math.random() - 0.5) * MOVE_DELTA, 0, 1);
-      unit.x = nx;
-      unit.y = ny;
-      unit.status = 'moving';
+    if (r < 0.40) {
+      // Move with conquest advance
+      const { nx, ny } = advanceMove(unit);
+      unit.x = nx; unit.y = ny; unit.status = 'moving';
       deltaMap.set(id, { ...deltaMap.get(id), id, x: nx, y: ny, status: 'moving' });
 
-    } else if (r < 0.55) {
-      // attack
+    } else if (r < 0.58) {
+      // Attack nearest enemy
       const enemyPool = unit.team === 'alpha' ? aliveBravo : aliveAlpha;
-      const targetId = pickRandom(enemyPool);
+      const targetId  = pickRandom(enemyPool);
       if (targetId !== undefined) {
         const target = units.get(targetId);
         if (target && target.status !== 'destroyed') {
-          const dmg = ri(5, 20);
+          const dmg   = ri(5, 20);
           const newHp = Math.max(0, target.health - dmg);
           target.health = newHp;
 
@@ -95,13 +119,12 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
         }
       }
 
-    } else if (r < 0.65) {
-      // heal
+    } else if (r < 0.68) {
+      // Heal
       if (unit.health < 100) {
-        const heal = ri(3, 10);
+        const heal  = ri(3, 10);
         const newHp = Math.min(100, unit.health + heal);
-        unit.health = newHp;
-        unit.status = 'active';
+        unit.health = newHp; unit.status = 'active';
         deltaMap.set(id, { ...deltaMap.get(id), id, health: newHp, status: 'active' });
         if (events.length < EVENT_CAP) {
           events.push({ id: randomUUID(), type: 'heal', timestamp, targetId: id, detail: `${unit.name} +${heal}hp` });
@@ -109,7 +132,6 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
       }
 
     } else {
-      // idle transition
       if (unit.status !== 'idle') {
         unit.status = 'idle';
         deltaMap.set(id, { ...deltaMap.get(id), id, status: 'idle' });
@@ -127,28 +149,15 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
 }
 
 export function computeKPI(units: Map<string, Unit>, seq: number): KPISummary {
-  let aliveAlpha = 0;
-  let aliveBravo = 0;
-  let destroyedAlpha = 0;
-  let destroyedBravo = 0;
-
+  let aliveAlpha = 0, aliveBravo = 0, destroyedAlpha = 0, destroyedBravo = 0;
   for (const u of units.values()) {
-    const destroyed = u.status === 'destroyed';
-    if (u.team === 'alpha') {
-      if (destroyed) destroyedAlpha++; else aliveAlpha++;
-    } else {
-      if (destroyed) destroyedBravo++; else aliveBravo++;
-    }
+    const d = u.status === 'destroyed';
+    if (u.team === 'alpha') { if (d) destroyedAlpha++; else aliveAlpha++; }
+    else                    { if (d) destroyedBravo++; else aliveBravo++; }
   }
-
   const totalAlive = aliveAlpha + aliveBravo;
-
   return {
-    seq,
-    aliveAlpha,
-    aliveBravo,
-    destroyedAlpha,
-    destroyedBravo,
+    seq, aliveAlpha, aliveBravo, destroyedAlpha, destroyedBravo,
     zoneControl: {
       alpha: totalAlive > 0 ? Math.round((aliveAlpha / totalAlive) * 100) : 50,
       bravo: totalAlive > 0 ? Math.round((aliveBravo / totalAlive) * 100) : 50,

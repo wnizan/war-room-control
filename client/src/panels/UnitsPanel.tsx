@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { FixedSizeList, type ListChildComponentProps } from 'react-window';
-import type { Unit, UnitStatus } from '@shared/types';
+import type { Unit, UnitStatus, UnitTeam } from '@shared/types';
 import { unitsStore } from '../store/unitsStore';
 import { filtersStore, type Filters } from '../store/filtersStore';
 import { selectionStore } from '../store/selectionStore';
+
+const TEAM_OPTIONS: Array<{ value: Filters['team']; label: string }> = [
+  { value: 'all',   label: 'All Teams' },
+  { value: 'alpha', label: 'Alpha' },
+  { value: 'bravo', label: 'Bravo' },
+];
 
 const STATUS_OPTIONS: Array<{ value: Filters['status']; label: string }> = [
   { value: 'all',       label: 'All' },
@@ -19,6 +25,7 @@ function applyFilters(map: Map<string, Unit>, filters: Filters): Unit[] {
   const nameLower = filters.name.toLowerCase();
 
   for (const u of map.values()) {
+    if (filters.team   !== 'all' && u.team   !== filters.team)   continue;
     if (filters.status !== 'all' && u.status !== filters.status) continue;
     if (u.health < filters.healthMin || u.health > filters.healthMax) continue;
     if (nameLower && !u.name.toLowerCase().includes(nameLower)) continue;
@@ -116,6 +123,16 @@ export function UnitsPanel() {
       </div>
 
       <div className="filters-bar">
+        <select
+          className="filter-select"
+          value={filters.team}
+          onChange={e => filtersStore.set('team', e.target.value as UnitTeam | 'all')}
+        >
+          {TEAM_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+
         <select
           className="filter-select"
           value={filters.status}

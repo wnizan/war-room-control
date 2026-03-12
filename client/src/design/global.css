@@ -177,6 +177,34 @@ body {
   cursor: pointer;
 }
 
+.zoom-controls {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.zoom-btn {
+  width: 22px;
+  height: 22px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px;
+  color: rgba(255,255,255,0.7);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.zoom-btn:hover {
+  background: rgba(59,130,246,0.35);
+  border-color: #3b82f6;
+  color: #fff;
+}
+
 /* ── Units Panel ────────────────────────────────────────────────── */
 .units-panel {
   min-height: 0;

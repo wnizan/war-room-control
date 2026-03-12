@@ -1,19 +1,21 @@
-import type { UnitStatus } from '@shared/types';
+import type { UnitStatus, UnitTeam } from '@shared/types';
 
 type Listener = () => void;
 
 export interface Filters {
-  status: UnitStatus | 'all';
+  team:      UnitTeam | 'all';
+  status:    UnitStatus | 'all';
   healthMin: number;
   healthMax: number;
-  name: string;
+  name:      string;
 }
 
 const DEFAULT_FILTERS: Filters = {
-  status: 'all',
+  team:      'all',
+  status:    'all',
   healthMin: 0,
   healthMax: 100,
-  name: '',
+  name:      '',
 };
 
 class FiltersStore {

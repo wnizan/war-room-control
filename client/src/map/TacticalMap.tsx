@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { unitsStore } from '../store/unitsStore';
 import { selectionStore } from '../store/selectionStore';
-import { startRenderLoop, setUnitScale } from './renderLoop';
+import { startRenderLoop, setUnitScale, setZoom, resetZoom } from './renderLoop';
 
 export function TacticalMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,9 +41,13 @@ export function TacticalMap() {
         <span className="kpi-sub">20,000 units</span>
       </div>
       <div className="map-container">
-        <canvas ref={canvasRef} className="tactical-map-canvas" />
+        <canvas
+          ref={canvasRef}
+          className="tactical-map-canvas"
+          onWheel={e => { e.preventDefault(); setZoom(e.deltaY < 0 ? 0.15 : -0.15); }}
+        />
         <div className="map-controls">
-          <label className="map-control-label">Units</label>
+          <label className="map-control-label">Size</label>
           <input
             type="range"
             min="0.5"
@@ -52,6 +56,11 @@ export function TacticalMap() {
             defaultValue="1"
             onChange={(e) => setUnitScale(parseFloat(e.target.value))}
           />
+          <div className="zoom-controls">
+            <button className="zoom-btn" onClick={() => setZoom(0.25)}>+</button>
+            <button className="zoom-btn" onClick={resetZoom}>⌂</button>
+            <button className="zoom-btn" onClick={() => setZoom(-0.25)}>−</button>
+          </div>
         </div>
       </div>
       <div className="map-legend">
