@@ -38,7 +38,7 @@ body {
 
 .side-panels {
   display: grid;
-  grid-template-rows: 1fr 220px auto;
+  grid-template-rows: 1fr 160px auto;
   gap: var(--space-2);
   min-height: 0;
   overflow: hidden;
@@ -89,7 +89,7 @@ body {
 
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-2);
   flex: 1;
 }
@@ -410,3 +410,54 @@ body {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+/* ── Selected unit row ──────────────────────────────────────────── */
+.unit-row-selected {
+  background: rgba(59,130,246,0.12);
+  border-left: 2px solid var(--color-alpha);
+  cursor: pointer;
+}
+
+.unit-row {
+  cursor: pointer;
+}
+
+/* ── Map legend ─────────────────────────────────────────────────── */
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Diamond shape via clip-path */
+.legend-diamond {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.legend-diamond--alpha { background: var(--color-alpha); }
+.legend-diamond--bravo { background: var(--color-bravo); }
+
+/* ── KPI zone control ───────────────────────────────────────────── */
+.kpi-value.neutral { color: var(--color-text-muted); }

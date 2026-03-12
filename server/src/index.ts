@@ -6,7 +6,17 @@ import { createRequestHandler } from './api/routes.js';
 
 const PORT = 3001;
 const TICK_MS = 1000;
-const UNIT_COUNT = 20_000;
+
+// Allow override via UNIT_COUNT env var (e.g. UNIT_COUNT=5000 npm start)
+// Clamps to [100, 100_000] to avoid degenerate values
+const UNIT_COUNT = (() => {
+  const raw = process.env['UNIT_COUNT'];
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n >= 100 && n <= 100_000) return n;
+  }
+  return 20_000;
+})();
 
 // ── Simulation state ─────────────────────────────────────────────────────────
 console.log(`[boot] Generating ${UNIT_COUNT} units...`);

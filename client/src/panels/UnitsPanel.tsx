@@ -3,27 +3,7 @@ import { FixedSizeList, type ListChildComponentProps } from 'react-window';
 import type { Unit, UnitStatus } from '@shared/types';
 import { unitsStore } from '../store/unitsStore';
 import { filtersStore, type Filters } from '../store/filtersStore';
-
-interface UnitStats {
-  active: number;
-  attacking: number;
-  damaged: number;
-  critical: number;
-}
-
-function computeStats(units: Unit[]): UnitStats {
-  let active = 0;
-  let attacking = 0;
-  let damaged = 0;
-  let critical = 0;
-  for (const u of units) {
-    if (u.status === 'active' || u.status === 'moving' || u.status === 'idle') active++;
-    if (u.status === 'attacking') attacking++;
-    if (u.health < 50) damaged++;
-    if (u.health < 25) critical++;
-  }
-  return { active, attacking, damaged, critical };
-}
+import { selectionStore } from '../store/selectionStore';
 
 const STATUS_OPTIONS: Array<{ value: Filters['status']; label: string }> = [
   { value: 'all',       label: 'All' },
@@ -53,19 +33,26 @@ function healthColor(h: number): string {
   return 'var(--color-critical)';
 }
 
-interface RowProps extends ListChildComponentProps {
-  data: Unit[];
+interface RowData {
+  units: Unit[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 }
 
-function UnitRow({ index, style, data }: RowProps) {
-  const unit = data[index];
+function UnitRow({ index, style, data }: ListChildComponentProps<RowData>) {
+  const unit = data.units[index];
   if (!unit) return null;
+  const isSelected = unit.id === data.selectedId;
 
   return (
-    <div style={style} className="unit-row">
-      <div className={`unit-team-dot ${unit.team}`} />
+    <div
+      style={style}
+      className={'unit-row' + (isSelected ? ' unit-row-selected' : '')}
+      onClick={() => data.onSelect(unit.id)}
+    >
+      <div className={'unit-team-dot ' + unit.team} />
       <span className="unit-name">{unit.name}</span>
-      <span className={`unit-status ${unit.status}`}>{unit.status}</span>
+      <span className={'unit-status ' + unit.status}>{unit.status}</span>
       <div>
         <div style={{ fontSize: 'var(--font-size-xs)', textAlign: 'right', color: healthColor(unit.health) }}>
           {unit.health}
@@ -73,7 +60,7 @@ function UnitRow({ index, style, data }: RowProps) {
         <div className="health-bar-bg">
           <div
             className="health-bar-fill"
-            style={{ width: `${unit.health}%`, background: healthColor(unit.health) }}
+            style={{ width: unit.health + '%', background: healthColor(unit.health) }}
           />
         </div>
       </div>
@@ -82,7 +69,8 @@ function UnitRow({ index, style, data }: RowProps) {
 }
 
 export function UnitsPanel() {
-  const filters = useSyncExternalStore(filtersStore.subscribe, filtersStore.getSnapshot);
+  const filters    = useSyncExternalStore(filtersStore.subscribe, filtersStore.getSnapshot);
+  const selectedId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSnapshot);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
@@ -90,14 +78,12 @@ export function UnitsPanel() {
     applyFilters(unitsStore.getMap(), filters)
   );
 
-  // Re-filter on store update
   useEffect(() => {
     return unitsStore.subscribe(() => {
       setUnits(applyFilters(unitsStore.getMap(), filtersRef.current));
     });
   }, []);
 
-  // Re-filter on filter change
   useEffect(() => {
     setUnits(applyFilters(unitsStore.getMap(), filters));
   }, [filters]);
@@ -116,7 +102,11 @@ export function UnitsPanel() {
     return () => ro.disconnect();
   }, []);
 
-  const itemData = useMemo(() => units, [units]);
+  const itemData = useMemo<RowData>(() => ({
+    units,
+    selectedId,
+    onSelect: selectionStore.select,
+  }), [units, selectedId]);
 
   return (
     <div className="panel units-panel">
