@@ -53,6 +53,7 @@ function RestartDialog({ onClose }: RestartDialogProps) {
     <div className="restart-overlay" ref={overlayRef} onClick={handleOverlayClick}>
       <div className="restart-dialog" role="dialog" aria-modal="true" aria-label="Restart simulation">
         <div className="restart-dialog-header">
+          <img src="/WR_ICON.png" alt="" className="restart-dialog-icon" />
           <span className="restart-dialog-title">Restart Simulation</span>
           <button className="restart-close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
@@ -106,6 +107,15 @@ export default function App() {
 
   return (
     <div className="app">
+      <header className="app-header">
+        <div className="app-header-left">
+          <div className="app-header-title-block">
+            <span className="app-header-title">War Room Control</span>
+            <span className="app-header-subtitle">Battlefield Operations Dashboard</span>
+          </div>
+        </div>
+        <img src="/WR_ICON.png" alt="War Room" className="app-header-icon" />
+      </header>
       <div className="kpi-row">
         <KpiStrip />
         <button className="restart-trigger-btn" onClick={() => setShowRestart(true)} title="Restart simulation">
