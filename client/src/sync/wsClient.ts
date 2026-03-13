@@ -2,7 +2,7 @@ import type { ServerMessage } from '@shared/types';
 import { unitsStore } from '../store/unitsStore';
 import { kpiStore } from '../store/kpiStore';
 import { eventsStore } from '../store/eventsStore';
-import { recordTickUpdate } from '../observability/usePerformanceMetrics';
+import { recordTickUpdate, recordTickLatency } from '../observability/usePerformanceMetrics';
 import { pulsesStore } from '../store/pulsesStore';
 
 const WS_URL = import.meta.env.DEV
@@ -49,6 +49,8 @@ function connect(): void {
   ws = new WebSocket(WS_URL);
 
   ws.onmessage = ({ data }: MessageEvent<string>) => {
+    // Capture receive time immediately — before any async processing that could delay it.
+    const receivedAt = Date.now();
     let parsed: unknown;
     try {
       parsed = JSON.parse(data) as unknown;
@@ -75,8 +77,12 @@ function connect(): void {
         break;
       }
       case 'tick': {
-        const { seq, units, kpi, events } = msg.payload;
+        const { seq, units, kpi, events, timestamp } = msg.payload;
         recordTickUpdate();
+        // Latency = time from server send to this client's receive moment.
+        // Using receivedAt (captured at onmessage entry) avoids inflation from
+        // snapshot chunking or other synchronous processing delays.
+        recordTickLatency(timestamp, receivedAt);
         const needsResync = unitsStore.applyDeltas(units, seq);
         if (needsResync) {
           ws?.close();

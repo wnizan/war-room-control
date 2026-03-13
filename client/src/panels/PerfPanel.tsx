@@ -28,6 +28,8 @@ function getMetricClass(
       return value <= 20 ? 'ok' : value <= 33 ? 'warn' : 'critical';
     case 'updateRate':
       return value >= 1 ? 'ok' : value >= 0.5 ? 'warn' : 'critical';
+    case 'apiLatency':
+      return value <= 50 ? 'ok' : value <= 200 ? 'warn' : 'critical';
     default:
       return null;
   }
@@ -45,6 +47,8 @@ function formatValue(metric: string, value: number | null): string {
       return `${value} MB`;
     case 'updateRate':
       return `${value.toFixed(1)} t/s`;
+    case 'apiLatency':
+      return `${Math.round(value)} ms`;
     default:
       return String(value);
   }
@@ -57,6 +61,7 @@ export function PerfPanel() {
   const fpsClass = getMetricClass('fps', metrics.fps);
   const frameTimeClass = getMetricClass('frameTime', metrics.frameTimeMs);
   const updateRateClass = getMetricClass('updateRate', metrics.updateRateHz);
+  const apiLatencyClass = getMetricClass('apiLatency', metrics.apiLatencyMs);
 
   return (
     <div className="panel perf-panel">
@@ -103,14 +108,19 @@ export function PerfPanel() {
             </span>
           </div>
 
-          {metrics.longTaskCount > 0 && (
-            <div className="perf-metric">
-              <span className="perf-metric-label">Long tasks</span>
-              <span className="perf-metric-value critical">
-                {metrics.longTaskCount}
-              </span>
-            </div>
-          )}
+          <div className="perf-metric">
+            <span className="perf-metric-label">API latency</span>
+            <span className={`perf-metric-value ${apiLatencyClass || ''}`}>
+              {formatValue('apiLatency', metrics.apiLatencyMs)}
+            </span>
+          </div>
+
+          <div className="perf-metric">
+            <span className="perf-metric-label">Long tasks /5s</span>
+            <span className={`perf-metric-value ${metrics.longTasksLast5s === 0 ? 'ok' : metrics.longTasksLast5s <= 3 ? 'warn' : 'critical'}`}>
+              {metrics.longTasksLast5s}
+            </span>
+          </div>
         </div>
       )}
     </div>

@@ -24,9 +24,27 @@ class UnitsStore {
   getSeq = (): number => this._seq;
 
   applySnapshot(units: Unit[], seq: number): void {
-    this._map = new Map(units.map(u => [u.id, u]));
-    this._seq = seq;
-    this._bump();
+    // Process in chunks to avoid a single long task blocking the main thread.
+    const CHUNK = 2000;
+    const newMap = new Map<string, Unit>();
+    let i = 0;
+
+    const processChunk = (): void => {
+      const end = Math.min(i + CHUNK, units.length);
+      for (; i < end; i++) {
+        const u = units[i];
+        newMap.set(u.id, u);
+      }
+      if (i < units.length) {
+        setTimeout(processChunk, 0);
+      } else {
+        this._map = newMap;
+        this._seq = seq;
+        this._bump();
+      }
+    };
+
+    processChunk();
   }
 
   /** Returns true if seq gap detected — caller should trigger resync */

@@ -16,6 +16,7 @@ class EventsStore {
 
   addEvents(incoming: GameEvent[]): void {
     if (incoming.length === 0) return;
+    // Newest at top — prepend incoming, keep MAX_EVENTS.
     this._events = [...incoming, ...this._events].slice(0, MAX_EVENTS);
     for (const l of this._listeners) l();
   }

@@ -7,6 +7,7 @@
  * - JS Heap size (performance.memory, Chrome-only)
  * - Update rate (TickUpdate messages per second)
  * - Long tasks (PerformanceObserver, if available)
+ * - API latency (PerformanceObserver resource timing for localhost:3001)
  *
  * Metrics are stored in refs (no state) to avoid triggering rerenders.
  * Display updates happen at ~2fps via a separate RAF loop to minimize overhead.
@@ -21,7 +22,8 @@ export interface PerformanceMetrics {
   frameTimeMs: number | null;
   heapSizeMb: number | null;
   updateRateHz: number | null;
-  longTaskCount: number;
+  longTasksLast5s: number;
+  apiLatencyMs: number | null;
 }
 
 // --- Metric Collection State (refs, not state) ---
@@ -31,7 +33,9 @@ interface MetricState {
   frameTimeMs: number | null;
   heapSizeMb: number | null;
   updateRateHz: number | null;
-  longTaskCount: number;
+  // Timestamps (ms) of long tasks in a sliding 5-second window
+  longTaskTimestamps: number[];
+  apiLatencyMs: number | null;
 
   // FPS tracking
   frameCount: number;
@@ -54,7 +58,8 @@ let globalMetrics: MetricState = {
   frameTimeMs: null,
   heapSizeMb: null,
   updateRateHz: null,
-  longTaskCount: 0,
+  longTaskTimestamps: [],
+  apiLatencyMs: null,
   frameCount: 0,
   lastFpsTime: performance.now(),
   lastFrameTime: performance.now(),
@@ -70,6 +75,17 @@ let tickUpdateCallbacks = new Set<(count: number) => void>();
 
 export function recordTickUpdate(): void {
   globalMetrics.tickCount += 1;
+}
+
+/** Called by wsClient with the server-sent timestamp and the exact receive time */
+export function recordTickLatency(serverTimestamp: number, receivedAt: number): void {
+  const latency = receivedAt - serverTimestamp;
+  if (latency >= 0 && latency < 5_000) {
+    globalMetrics.apiLatencyMs =
+      globalMetrics.apiLatencyMs === null
+        ? latency
+        : Math.round(globalMetrics.apiLatencyMs * 0.8 + latency * 0.2);
+  }
 }
 
 export function onTickUpdateCount(cb: (count: number) => void): () => void {
@@ -141,11 +157,15 @@ function startLongTaskObserver(): void {
 
   try {
     const observer = new PerformanceObserver((list) => {
+      const now = Date.now();
       for (const entry of list.getEntries()) {
         if (entry.duration > 50) {
-          globalMetrics.longTaskCount++;
+          globalMetrics.longTaskTimestamps.push(now);
         }
       }
+      // Evict entries older than 5 seconds
+      const cutoff = Date.now() - 5_000;
+      globalMetrics.longTaskTimestamps = globalMetrics.longTaskTimestamps.filter(t => t > cutoff);
     });
 
     // Try to observe longtask (may fail due to permissions)
@@ -160,6 +180,9 @@ function startLongTaskObserver(): void {
   }
 }
 
+// API latency is measured via recordTickLatency() called from wsClient
+// using server-sent timestamps in TickUpdate messages.
+
 // --- Hook ---
 
 export function usePerformanceMetrics(): PerformanceMetrics {
@@ -168,7 +191,8 @@ export function usePerformanceMetrics(): PerformanceMetrics {
     frameTimeMs: null,
     heapSizeMb: null,
     updateRateHz: null,
-    longTaskCount: 0,
+    longTasksLast5s: 0,
+    apiLatencyMs: null,
   });
 
   const displayRefreshTimerRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(
@@ -186,12 +210,17 @@ export function usePerformanceMetrics(): PerformanceMetrics {
 
     // Display update loop (refreshes at ~2fps to minimize component rerenders)
     function displayUpdateLoop(): void {
+      // Evict stale long-task timestamps before computing count
+      const cutoff = Date.now() - 5_000;
+      globalMetrics.longTaskTimestamps = globalMetrics.longTaskTimestamps.filter(t => t > cutoff);
+
       setMetrics({
         fps: globalMetrics.fps,
         frameTimeMs: globalMetrics.frameTimeMs,
         heapSizeMb: globalMetrics.heapSizeMb,
         updateRateHz: globalMetrics.updateRateHz,
-        longTaskCount: globalMetrics.longTaskCount,
+        longTasksLast5s: globalMetrics.longTaskTimestamps.length,
+        apiLatencyMs: globalMetrics.apiLatencyMs,
       });
 
       // Schedule next update in ~500ms (2fps)

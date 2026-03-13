@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, useRef } from 'react';
 import type { GameEventType } from '@shared/types';
 import { eventsStore } from '../store/eventsStore';
 
@@ -17,6 +17,7 @@ function timeAgo(ts: number): string {
 
 export function EventFeed() {
   const events = useSyncExternalStore(eventsStore.subscribe, eventsStore.getSnapshot);
+  const seenIds = useRef(new Set<string>());
 
   return (
     <div className="panel event-feed">
@@ -25,17 +26,21 @@ export function EventFeed() {
         <span className="kpi-sub">{events.length}</span>
       </div>
       <div className="panel-body event-list">
-        {events.map(e => (
-          <div key={e.id} className={`event-item event-type-${e.type}`}>
-            <span className="event-icon">{EVENT_ICONS[e.type]}</span>
-            <span className="event-detail">
-              {e.detail ?? e.type}
-              <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}>
-                {timeAgo(e.timestamp)}
+        {events.map(e => {
+          const isNew = !seenIds.current.has(e.id);
+          if (isNew) seenIds.current.add(e.id);
+          return (
+            <div key={e.id} className={`event-item event-type-${e.type}${isNew ? ' event-item--new' : ''}`}>
+              <span className="event-icon">{EVENT_ICONS[e.type]}</span>
+              <span className="event-detail">
+                {e.detail ?? e.type}
+                <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}>
+                  {timeAgo(e.timestamp)}
+                </span>
               </span>
-            </span>
-          </div>
-        ))}
+            </div>
+          );
+        })}
         {events.length === 0 && (
           <div style={{ padding: 'var(--space-4)', color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)' }}>
             Awaiting events…
