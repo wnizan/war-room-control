@@ -655,7 +655,7 @@ export function startRenderLoop(
 ): UnsubscribeFn {
   resetRenderState();
 
-  const ctxOrNull = canvas.getContext('2d');
+  const ctxOrNull = canvas.getContext('2d', { alpha: false });
   if (!ctxOrNull) return () => { /* no-op */ };
   const ctx: CanvasRenderingContext2D = ctxOrNull;
 
