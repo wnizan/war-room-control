@@ -123,8 +123,8 @@ export function TacticalMap() {
           <label className="map-control-label">Size</label>
           <input
             type="range"
-            min="0.5"
-            max="2"
+            min="0.75"
+            max="1.5"
             step="0.25"
             defaultValue="1"
             onChange={(e) => setUnitScale(parseFloat(e.target.value))}

@@ -785,9 +785,9 @@ export function startRenderLoop(
     drawHotspots(ctx, W, H, now);
 
     // Layer 4: Units — single classification pass, then batch render per bucket
-    const size3 = Math.max(1, Math.round(3 * scale));
-    const size4 = Math.max(1, Math.round(4 * scale));
-    const size1 = Math.max(1, Math.round(1 * scale));
+    const size3 = Math.max(1, Math.round(2 * scale));
+    const size4 = Math.max(1, Math.round(2 * scale));
+    const size1 = 1;
 
     const bAlpha:   number[] = [];
     const bBravo:   number[] = [];
