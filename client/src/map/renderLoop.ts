@@ -67,6 +67,33 @@ export function consumeDirty(): boolean {
   return false;
 }
 
+/** Find the unit closest to canvas pixel (cx, cy), within thresholdPx pixels. Returns unit id or null. */
+export function findNearestUnit(
+  cx: number,
+  cy: number,
+  W: number,
+  H: number,
+  units: Map<string, Unit>,
+  thresholdPx: number,
+): string | null {
+  const { zoom, cx: vcx, cy: vcy } = viewport;
+  const nx = (cx / W - 0.5) / zoom + vcx;
+  const ny = (cy / H - 0.5) / zoom + vcy;
+  const threshNorm = thresholdPx / (W * zoom);
+  let bestId: string | null = null;
+  let bestDist = threshNorm * threshNorm;
+  for (const u of units.values()) {
+    const dx = u.x - nx;
+    const dy = u.y - ny;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestDist) {
+      bestDist = d2;
+      bestId = u.id;
+    }
+  }
+  return bestId;
+}
+
 // ---------------------------------------------------------------------------
 // Colors
 // ---------------------------------------------------------------------------
