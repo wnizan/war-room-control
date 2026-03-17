@@ -158,9 +158,11 @@ function sectorOf(u: Unit): SectorId {
 }
 
 let cachedSectorDominance: Record<SectorId, 'alpha' | 'bravo' | 'neutral'> | null = null;
+let _sectorLastComputed = 0;
+const SECTOR_THROTTLE_MS = 2000;
 
 export function invalidateSectorCache(): void {
-  cachedSectorDominance = null;
+  // Throttled — cache expires by time in draw(), not on every delta
 }
 
 function computeSectorDominance(units: Map<string, Unit>): Record<SectorId, 'alpha' | 'bravo' | 'neutral'> {
@@ -614,6 +616,7 @@ export function resetRenderState(): void {
 
   // Sector cache
   cachedSectorDominance = null;
+  _sectorLastComputed = 0;
 
   // Hotspot grid
   hotspotGrid.fill(0);
@@ -675,7 +678,10 @@ export function startRenderLoop(
     ctx.drawImage(terrainCanvas, 0, 0);
 
     // Layer 1: Sectors
-    if (!cachedSectorDominance) cachedSectorDominance = computeSectorDominance(units);
+    if (!cachedSectorDominance || now - _sectorLastComputed > SECTOR_THROTTLE_MS) {
+      cachedSectorDominance = computeSectorDominance(units);
+      _sectorLastComputed = now;
+    }
     drawSectors(ctx, W, H, cachedSectorDominance);
 
     // Layer 2: Bases
