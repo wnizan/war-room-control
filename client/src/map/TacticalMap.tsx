@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import { unitsStore } from '../store/unitsStore';
 import { selectionStore } from '../store/selectionStore';
-import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom, setMapMarker, clearMapMarker, canvasToNorm } from './renderLoop';
+import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom, findNearestUnit, setMapMarker, clearMapMarker, canvasToNorm } from './renderLoop';
 import { UnitTooltip } from '../panels/UnitTooltip';
 import type { Unit } from '@shared/types';
 
@@ -98,21 +98,23 @@ export function TacticalMap() {
             if (dragMovedRef.current) return;
             const canvas = canvasRef.current;
             if (!canvas) return;
-            const rect = canvas.getBoundingClientRect();
-            const cx   = e.clientX - rect.left;
-            const cy   = e.clientY - rect.top;
-            if (e.altKey) {
-              // Alt+click → clear marker
+            const rect   = canvas.getBoundingClientRect();
+            const cx     = e.clientX - rect.left;
+            const cy     = e.clientY - rect.top;
+            const unitId = findNearestUnit(cx, cy, canvas.width, canvas.height, unitsStore.getMap(), 12);
+            if (unitId !== null) {
+              selectionStore.select(unitId);
+              setTooltipPos({ x: cx, y: cy });
+              // Place marker on the selected unit's canvas position
+              const { nx, ny } = canvasToNorm(cx, cy, canvas.width, canvas.height);
+              setMapMarker(nx, ny);
+            } else {
+              selectionStore.select(null);
+              setTooltipPos(null);
               clearMapMarker();
-              return;
             }
-            const { nx, ny } = canvasToNorm(cx, cy, canvas.width, canvas.height);
-            setMapMarker(nx, ny);
           }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            clearMapMarker();
-          }}
+          onContextMenu={(e) => { e.preventDefault(); }}
         />
         {tooltipPos !== null && selectedUnit !== null && (
           <UnitTooltip unit={selectedUnit} x={tooltipPos.x} y={tooltipPos.y} />
