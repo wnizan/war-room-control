@@ -831,3 +831,130 @@ body {
   border-color: #ff6b6b;
 }
 .restart-btn-confirm:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Unit Tooltip ──────────────────────────────────────────────────────── */
+.unit-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: rgba(10, 14, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 8px 10px;
+  min-width: 160px;
+  pointer-events: none;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.unit-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: rgba(10, 14, 20, 0.95);
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.unit-tooltip-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.unit-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  font-size: 10px;
+}
+
+.unit-tooltip-label {
+  color: rgba(255, 255, 255, 0.4);
+  width: 42px;
+  flex-shrink: 0;
+}
+
+.unit-tooltip-value {
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+.unit-tooltip-bar-wrap {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.unit-tooltip-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+/* ── Unit Detail Panel ─────────────────────────────────────────────────── */
+.unit-detail-panel {
+  flex-shrink: 0;
+}
+
+.unit-detail-empty {
+  padding: 16px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+}
+
+.unit-detail-body {
+  padding: 10px 12px;
+}
+
+.unit-detail-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.unit-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 11px;
+}
+
+.unit-detail-label {
+  color: rgba(255, 255, 255, 0.4);
+  width: 54px;
+  flex-shrink: 0;
+}
+
+.unit-detail-value {
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+.unit-detail-hp-row {
+  margin-top: 4px;
+}
+
+.unit-detail-bar-wrap {
+  flex: 1;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.unit-detail-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}

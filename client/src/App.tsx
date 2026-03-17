@@ -7,6 +7,7 @@ import { TacticalMap } from './map/TacticalMap';
 import { UnitsPanel } from './panels/UnitsPanel';
 import { EventFeed } from './panels/EventFeed';
 import { PerfPanel } from './panels/PerfPanel';
+import { UnitDetailPanel } from './panels/UnitDetailPanel';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
@@ -129,6 +130,7 @@ export default function App() {
           <UnitsPanel />
           <EventFeed />
           <PerfPanel />
+          <UnitDetailPanel />
         </div>
       </div>
 
