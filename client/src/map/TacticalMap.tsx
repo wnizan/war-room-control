@@ -1,10 +1,17 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { unitsStore } from '../store/unitsStore';
 import { selectionStore } from '../store/selectionStore';
-import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom } from './renderLoop';
+import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom, findNearestUnit } from './renderLoop';
+import { UnitTooltip } from '../panels/UnitTooltip';
+import type { Unit } from '@shared/types';
 
 export function TacticalMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const selectedId  = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSnapshot);
+  const snapshot    = useSyncExternalStore(unitsStore.subscribe, unitsStore.getSnapshot);
+  const selectedUnit: Unit | null = selectedId != null ? (snapshot.ref.get(selectedId) ?? null) : null;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -33,8 +40,10 @@ export function TacticalMap() {
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
+    let dragMoved = false;
 
     function onPointerDown(e: PointerEvent): void {
+      dragMoved = false;
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -43,6 +52,7 @@ export function TacticalMap() {
     }
 
     function onPointerMove(e: PointerEvent): void {
+      if (dragging) dragMoved = true;
       if (!dragging) return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
@@ -84,7 +94,26 @@ export function TacticalMap() {
           ref={canvasRef}
           className="tactical-map-canvas"
           onWheel={e => { e.preventDefault(); setZoom(e.deltaY < 0 ? 0.15 : -0.15); }}
+          onClick={(e) => {
+            if (dragMoved) return;
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const rect   = canvas.getBoundingClientRect();
+            const cx     = e.clientX - rect.left;
+            const cy     = e.clientY - rect.top;
+            const unitId = findNearestUnit(cx, cy, canvas.width, canvas.height, unitsStore.getMap(), 12);
+            if (unitId !== null) {
+              selectionStore.select(unitId);
+              setTooltipPos({ x: cx, y: cy });
+            } else {
+              selectionStore.select(null);
+              setTooltipPos(null);
+            }
+          }}
         />
+        {tooltipPos !== null && selectedUnit !== null && (
+          <UnitTooltip unit={selectedUnit} x={tooltipPos.x} y={tooltipPos.y} />
+        )}
         <div className="map-controls">
           <label className="map-control-label">Size</label>
           <input
