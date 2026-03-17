@@ -23,6 +23,18 @@ class KpiStore {
   getSnapshot = (): KPISummary => this._kpi;
 
   update(kpi: KPISummary): void {
+    // Skip notification if meaningful values haven't changed (seq always changes)
+    if (
+      this._kpi.aliveAlpha === kpi.aliveAlpha &&
+      this._kpi.aliveBravo === kpi.aliveBravo &&
+      this._kpi.destroyedAlpha === kpi.destroyedAlpha &&
+      this._kpi.destroyedBravo === kpi.destroyedBravo &&
+      this._kpi.zoneControl.alpha === kpi.zoneControl.alpha &&
+      this._kpi.zoneControl.bravo === kpi.zoneControl.bravo
+    ) {
+      return;
+    }
+
     this._kpi = kpi;
     for (const l of this._listeners) l();
   }
