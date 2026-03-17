@@ -387,8 +387,8 @@ function drawBases(ctx: CanvasRenderingContext2D, W: number, H: number): void {
 
 const HOTSPOT_COLS  = 20;
 const HOTSPOT_ROWS  = 20;
-const hotspotGrid   = new Float32Array(HOTSPOT_COLS * HOTSPOT_ROWS);
-let activeHotspotCount = 0;
+const hotspotGrid          = new Float32Array(HOTSPOT_COLS * HOTSPOT_ROWS);
+const activeHotspotIndices = new Set<number>();
 const HOTSPOT_DECAY = 0.006;   // was 0.0015 — decays 4× faster, shows only recent combat
 const HOTSPOT_HIT   = 0.12;   // was 0.22  — smaller per-hit so zones don't saturate instantly
 
@@ -396,9 +396,8 @@ export function addHotspot(x: number, y: number): void {
   const col = Math.min(HOTSPOT_COLS - 1, (x * HOTSPOT_COLS) | 0);
   const row = Math.min(HOTSPOT_ROWS - 1, (y * HOTSPOT_ROWS) | 0);
   const idx = row * HOTSPOT_COLS + col;
-  const prev = hotspotGrid[idx] ?? 0;
-  if (prev === 0) activeHotspotCount++;
-  hotspotGrid[idx] = Math.min(1, prev + HOTSPOT_HIT);
+  hotspotGrid[idx] = Math.min(1, (hotspotGrid[idx] ?? 0) + HOTSPOT_HIT);
+  activeHotspotIndices.add(idx);
 }
 
 // Pre-built rgba strings keyed by intensity bucket (0–15) to avoid per-frame
@@ -444,38 +443,31 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
 
   const PI2 = Math.PI * 2;
 
-  for (let i = 0; i < hotspotGrid.length; i++) {
+  for (const i of activeHotspotIndices) {
     const v = hotspotGrid[i] ?? 0;
-    if (v < 0.04) {
-      if (v > 0) {
-        const nv = Math.max(0, v - HOTSPOT_DECAY);
-        if (nv === 0) activeHotspotCount = Math.max(0, activeHotspotCount - 1);
-        hotspotGrid[i] = nv;
-      }
+    const newV = Math.max(0, v - HOTSPOT_DECAY);
+    hotspotGrid[i] = newV;
+    if (newV === 0) {
+      activeHotspotIndices.delete(i);
       continue;
     }
+    if (v < 0.04) continue;
 
     const col = i % HOTSPOT_COLS;
     const row = (i / HOTSPOT_COLS) | 0;
-
-    // Centre of this grid cell in normalised space
     const nx = (col + 0.5) / HOTSPOT_COLS;
     const ny = (row + 0.5) / HOTSPOT_ROWS;
     const [cx, cy] = toScreen(nx, ny, W, H);
 
-    const pulse  = Math.sin(now * 0.004) * 0.1 + 0.9;  // subtler pulse animation
-    const radius = cellPx * 0.5 * v * pulse;             // was 0.8 — smaller footprint
-
-    // Bucket index for pre-built color strings (avoids toFixed + string concat)
+    const pulse  = Math.sin(now * 0.004) * 0.1 + 0.9;
+    const radius = cellPx * 0.5 * v * pulse;
     const bi = Math.min(15, (v * 16) | 0);
 
-    // Outer halo (large threat area) — no gradient, single fill
     ctx.beginPath();
     ctx.arc(cx, cy, radius * 1.7, 0, PI2);
     ctx.fillStyle = _HOTSPOT_HALO[bi] ?? _HOTSPOT_HALO[15]!;
     ctx.fill();
 
-    // Inner core — two concentric fills replace the RadialGradient
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, PI2);
     ctx.fillStyle = _HOTSPOT_CORE2[bi] ?? _HOTSPOT_CORE2[15]!;
@@ -486,21 +478,18 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
     ctx.fillStyle = _HOTSPOT_CORE1[bi] ?? _HOTSPOT_CORE1[15]!;
     ctx.fill();
 
-    // Pulsing outer ring
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, PI2);
     ctx.strokeStyle = _HOTSPOT_RING1[bi] ?? _HOTSPOT_RING1[15]!;
     ctx.lineWidth   = 2;
     ctx.stroke();
 
-    // Secondary inner ring
     ctx.beginPath();
     ctx.arc(cx, cy, radius * 0.55, 0, PI2);
     ctx.strokeStyle = _HOTSPOT_RING2[bi] ?? _HOTSPOT_RING2[15]!;
     ctx.lineWidth   = 1;
     ctx.stroke();
 
-    // Crosshair at centre (medium+ intensity)
     if (v > 0.5) {
       const arm = radius * 0.4;
       ctx.strokeStyle = _HOTSPOT_CROSS[bi] ?? _HOTSPOT_CROSS[15]!;
@@ -511,7 +500,6 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
       ctx.stroke();
     }
 
-    // "CONTACT" label — only at high intensity so it's not constantly visible
     if (v > 0.7) {
       ctx.font         = FONT_SMALL;
       ctx.fillStyle    = _HOTSPOT_LABEL[bi] ?? _HOTSPOT_LABEL[15]!;
@@ -521,10 +509,6 @@ function drawHotspots(ctx: CanvasRenderingContext2D, W: number, H: number, now: 
       ctx.textAlign    = 'start';
       ctx.textBaseline = 'alphabetic';
     }
-
-    const newV = Math.max(0, v - HOTSPOT_DECAY);
-    if (newV === 0 && v > 0) activeHotspotCount = Math.max(0, activeHotspotCount - 1);
-    hotspotGrid[i] = newV;
   }
   ctx.restore();
 }
@@ -633,7 +617,7 @@ export function resetRenderState(): void {
 
   // Hotspot grid
   hotspotGrid.fill(0);
-  activeHotspotCount = 0;
+  activeHotspotIndices.clear();
 
   // Pulses
   activePulses.clear();
@@ -672,7 +656,7 @@ export function startRenderLoop(
 
   function hasPulses(): boolean { return activePulses.size > 0; }
 
-  function hasActiveHotspots(): boolean { return activeHotspotCount > 0; }
+  function hasActiveHotspots(): boolean { return activeHotspotIndices.size > 0; }
 
   function draw(): void {
     const W = canvas.width, H = canvas.height;
