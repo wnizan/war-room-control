@@ -7,7 +7,8 @@ import { UnitTooltip } from '../panels/UnitTooltip';
 import type { Unit } from '@shared/types';
 
 export function TacticalMap() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const dragMovedRef = useRef(false);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const selectedId  = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSnapshot);
   const snapshot    = useSyncExternalStore(unitsStore.subscribe, unitsStore.getSnapshot);
@@ -40,10 +41,9 @@ export function TacticalMap() {
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
-    let dragMoved = false;
 
     function onPointerDown(e: PointerEvent): void {
-      dragMoved = false;
+      dragMovedRef.current = false;
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -52,7 +52,7 @@ export function TacticalMap() {
     }
 
     function onPointerMove(e: PointerEvent): void {
-      if (dragging) dragMoved = true;
+      if (dragging) dragMovedRef.current = true;
       if (!dragging) return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
@@ -95,7 +95,7 @@ export function TacticalMap() {
           className="tactical-map-canvas"
           onWheel={e => { e.preventDefault(); setZoom(e.deltaY < 0 ? 0.15 : -0.15); }}
           onClick={(e) => {
-            if (dragMoved) return;
+            if (dragMovedRef.current) return;
             const canvas = canvasRef.current;
             if (!canvas) return;
             const rect = canvas.getBoundingClientRect();
