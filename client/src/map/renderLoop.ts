@@ -627,6 +627,70 @@ function drawSelection(
 }
 
 // ---------------------------------------------------------------------------
+// Layer 7: Map marker — single pinned location, drawn on Canvas
+// ---------------------------------------------------------------------------
+
+interface MapMarker { nx: number; ny: number; placedAt: number; }
+let _mapMarker: MapMarker | null = null;
+
+export function setMapMarker(nx: number, ny: number): void {
+  _mapMarker = { nx, ny, placedAt: performance.now() };
+  markDirty();
+}
+
+export function clearMapMarker(): void {
+  if (_mapMarker !== null) { _mapMarker = null; markDirty(); }
+}
+
+export function hasMapMarker(): boolean { return _mapMarker !== null; }
+
+/** Convert canvas pixel click to normalised map coord */
+export function canvasToNorm(cx: number, cy: number, W: number, H: number): { nx: number; ny: number } {
+  const { zoom, cx: vcx, cy: vcy } = viewport;
+  return {
+    nx: (cx / W - 0.5) / zoom + vcx,
+    ny: (cy / H - 0.5) / zoom + vcy,
+  };
+}
+
+function drawMapMarker(ctx: CanvasRenderingContext2D, W: number, H: number, now: number): void {
+  if (_mapMarker === null) return;
+  const [px, py] = toScreen(_mapMarker.nx, _mapMarker.ny, W, H);
+
+  const age   = now - _mapMarker.placedAt;
+  const pulse = Math.sin(age * 0.004) * 0.25 + 0.75; // 0.5–1.0
+
+  ctx.save();
+
+  // Outer pulsing ring
+  ctx.beginPath();
+  ctx.arc(px, py, 12 * pulse, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(250,204,21,0.7)';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Inner filled circle
+  ctx.beginPath();
+  ctx.arc(px, py, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#fde047';
+  ctx.fill();
+
+  // Crosshair arms
+  const ARM = 10, GAP = 6;
+  ctx.strokeStyle = '#fde047';
+  ctx.globalAlpha = 0.9;
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(px - GAP - ARM, py); ctx.lineTo(px - GAP, py);
+  ctx.moveTo(px + GAP,       py); ctx.lineTo(px + GAP + ARM, py);
+  ctx.moveTo(px, py - GAP - ARM); ctx.lineTo(px, py - GAP);
+  ctx.moveTo(px, py + GAP);       ctx.lineTo(px, py + GAP + ARM);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Reset — call before (re)mounting to clear all stale module globals
 // ---------------------------------------------------------------------------
@@ -651,6 +715,9 @@ export function resetRenderState(): void {
 
   // Pulses
   activePulses.clear();
+
+  // Map marker
+  _mapMarker = null;
 
   // Unit scale
   unitScale = 1.0;
@@ -770,6 +837,9 @@ export function startRenderLoop(
     // Layer 6: Selection
     drawSelection(ctx, W, H, units, selectedId);
 
+    // Layer 7: Map marker
+    drawMapMarker(ctx, W, H, now);
+
     // Zoom level indicator
     if (viewport.zoom > 1) {
       ctx.save();
@@ -783,7 +853,7 @@ export function startRenderLoop(
   }
 
   function frame(): void {
-    if (dirty || consumeDirty() || hasPulses() || hasActiveHotspots()) {
+    if (dirty || consumeDirty() || hasPulses() || hasActiveHotspots() || hasMapMarker()) {
       draw();
       dirty = false;
     }

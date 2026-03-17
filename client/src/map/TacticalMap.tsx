@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import { unitsStore } from '../store/unitsStore';
 import { selectionStore } from '../store/selectionStore';
-import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom, findNearestUnit } from './renderLoop';
+import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom, setMapMarker, clearMapMarker, canvasToNorm } from './renderLoop';
 import { UnitTooltip } from '../panels/UnitTooltip';
 import type { Unit } from '@shared/types';
 
@@ -98,17 +98,20 @@ export function TacticalMap() {
             if (dragMoved) return;
             const canvas = canvasRef.current;
             if (!canvas) return;
-            const rect   = canvas.getBoundingClientRect();
-            const cx     = e.clientX - rect.left;
-            const cy     = e.clientY - rect.top;
-            const unitId = findNearestUnit(cx, cy, canvas.width, canvas.height, unitsStore.getMap(), 12);
-            if (unitId !== null) {
-              selectionStore.select(unitId);
-              setTooltipPos({ x: cx, y: cy });
-            } else {
-              selectionStore.select(null);
-              setTooltipPos(null);
+            const rect = canvas.getBoundingClientRect();
+            const cx   = e.clientX - rect.left;
+            const cy   = e.clientY - rect.top;
+            if (e.altKey) {
+              // Alt+click → clear marker
+              clearMapMarker();
+              return;
             }
+            const { nx, ny } = canvasToNorm(cx, cy, canvas.width, canvas.height);
+            setMapMarker(nx, ny);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            clearMapMarker();
           }}
         />
         {tooltipPos !== null && selectedUnit !== null && (
