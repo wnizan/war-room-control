@@ -836,33 +836,23 @@ export function startRenderLoop(
         ctx.fillRect(bucket[i]!, bucket[i + 1]!, sz, sz);
     }
 
-    // Helper: draw all diamonds (vehicle) via batched path
+    // Helper: draw vehicle diamonds as 2 overlapping fillRects (rotated cross) — fast
     function drawDiamonds(bucket: number[], h: number): void {
-      if (bucket.length === 0) return;
-      ctx.beginPath();
+      const h2 = Math.max(1, h >> 1);
       for (let i = 0; i < bucket.length; i += 2) {
         const cx = bucket[i]!, cy = bucket[i + 1]!;
-        ctx.moveTo(cx,     cy - h);
-        ctx.lineTo(cx + h, cy);
-        ctx.lineTo(cx,     cy + h);
-        ctx.lineTo(cx - h, cy);
-        ctx.closePath();
+        ctx.fillRect(cx - h,  cy - h2, h * 2, h2 * 2); // horizontal bar
+        ctx.fillRect(cx - h2, cy - h,  h2 * 2, h * 2); // vertical bar
       }
-      ctx.fill();
     }
 
-    // Helper: draw all triangles (air) via batched path — apex up
+    // Helper: draw air units as small dot + top pixel (distinguishable, fast)
     function drawTriangles(bucket: number[], h: number): void {
-      if (bucket.length === 0) return;
-      ctx.beginPath();
       for (let i = 0; i < bucket.length; i += 2) {
         const cx = bucket[i]!, cy = bucket[i + 1]!;
-        ctx.moveTo(cx,     cy - h);   // apex
-        ctx.lineTo(cx + h, cy + h);   // bottom-right
-        ctx.lineTo(cx - h, cy + h);   // bottom-left
-        ctx.closePath();
+        ctx.fillRect(cx - h, cy - h, h * 2, h * 2); // main dot
+        ctx.fillRect(cx,     cy - h - 1, 1, 2);      // top spike
       }
-      ctx.fill();
     }
 
     // Draw dead (1px squares, all types)

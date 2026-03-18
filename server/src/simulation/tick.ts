@@ -91,12 +91,21 @@ function advanceMove(unit: Unit): { nx: number; ny: number } {
 export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
   const timestamp = Date.now();
 
+  // Build per-team AND per-type pools once — avoids O(n) filter per attacker
   const aliveAlpha: string[] = [];
   const aliveBravo: string[] = [];
+  const aliveAlphaByType: Record<string, string[]> = { infantry: [], vehicle: [], air: [] };
+  const aliveBravoByType: Record<string, string[]> = { infantry: [], vehicle: [], air: [] };
+
   for (const [id, u] of units) {
     if (u.status !== 'destroyed') {
-      if (u.team === 'alpha') aliveAlpha.push(id);
-      else aliveBravo.push(id);
+      if (u.team === 'alpha') {
+        aliveAlpha.push(id);
+        aliveAlphaByType[u.type]!.push(id);
+      } else {
+        aliveBravo.push(id);
+        aliveBravoByType[u.type]!.push(id);
+      }
     }
   }
 
@@ -120,13 +129,14 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
       deltaMap.set(id, { ...deltaMap.get(id), id, x: nx, y: ny, status: 'moving' });
 
     } else if (r < 0.58) {
-      // Attack — filter by type restrictions, then check range
-      const rawPool   = unit.team === 'alpha' ? aliveBravo : aliveAlpha;
-      const canAttack = TYPE_CAN_ATTACK[unit.type];
-      const enemyPool = rawPool.filter(eid => {
-        const e = units.get(eid);
-        return e !== undefined && canAttack.has(e.type);
-      });
+      // Attack — use pre-built per-type pools (no filter per attacker)
+      const enemyByType = unit.team === 'alpha' ? aliveBravoByType : aliveAlphaByType;
+      const canAttack   = TYPE_CAN_ATTACK[unit.type];
+      // Concat only the allowed type pools (max 3 lookups, no iteration)
+      const enemyPool: string[] = [];
+      if (canAttack.has('infantry')) enemyPool.push(...enemyByType['infantry']!);
+      if (canAttack.has('vehicle'))  enemyPool.push(...enemyByType['vehicle']!);
+      if (canAttack.has('air'))      enemyPool.push(...enemyByType['air']!);
       const targetId = pickNearest(units, unit, enemyPool, 12);
       if (targetId !== undefined) {
         const target = units.get(targetId);
