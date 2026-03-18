@@ -98,9 +98,26 @@ function RestartDialog({ onClose }: RestartDialogProps) {
 
 // ── App ────────────────────────────────────────────────────────────────────────
 
+const SPEED_OPTIONS = [0.5, 1, 2, 5] as const;
+type SpeedMultiplier = typeof SPEED_OPTIONS[number];
+
 export default function App() {
   const connStatus = useConnectionStatus();
   const [showRestart, setShowRestart] = useState(false);
+  const [speed, setSpeed] = useState<SpeedMultiplier>(1);
+
+  async function handleSpeed(multiplier: SpeedMultiplier) {
+    setSpeed(multiplier);
+    try {
+      await fetch(`${API_BASE}/api/speed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ multiplier }),
+      });
+    } catch (err) {
+      console.error('[speed] fetch failed', err);
+    }
+  }
 
   useEffect(() => {
     startSync();
@@ -119,6 +136,17 @@ export default function App() {
       </header>
       <div className="kpi-row">
         <KpiStrip />
+        <div className="speed-btns">
+          {SPEED_OPTIONS.map(s => (
+            <button
+              key={s}
+              className={`speed-btn${speed === s ? ' active' : ''}`}
+              onClick={() => handleSpeed(s)}
+            >
+              {s}x
+            </button>
+          ))}
+        </div>
         <button className="restart-trigger-btn" onClick={() => setShowRestart(true)} title="Restart simulation">
           ↺ Restart
         </button>

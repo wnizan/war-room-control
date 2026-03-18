@@ -7,6 +7,12 @@ const RestartSchema = z.object({
   alphaRatio: z.coerce.number().min(0).max(1).default(0.5),
 });
 
+const SpeedSchema = z.object({
+  multiplier: z.coerce.number().refine(v => [0.5, 1, 2, 5].includes(v), {
+    message: 'multiplier must be 0.5, 1, 2, or 5',
+  }),
+});
+
 const QuerySchema = z.object({
   status:    z.enum(['active', 'attacking', 'moving', 'idle', 'destroyed']).optional(),
   healthMin: z.coerce.number().min(0).max(100).optional(),
@@ -48,6 +54,7 @@ function json(res: ServerResponse, status: number, data: unknown): void {
 export function createRequestHandler(
   getUnits: () => Map<string, Unit>,
   onRestart: (alphaRatio: number) => void,
+  onSpeed: (multiplier: number) => void,
 ) {
   return function handle(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url ?? '/';
@@ -103,6 +110,23 @@ export function createRequestHandler(
         }
         onRestart(parsed.data.alphaRatio);
         json(res, 200, { ok: true, alphaRatio: parsed.data.alphaRatio, units: getUnits().size });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && url === '/api/speed') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      req.on('end', () => {
+        let raw: unknown = {};
+        try { raw = body ? JSON.parse(body) as unknown : {}; } catch { /* invalid JSON → use defaults */ }
+        const parsed = SpeedSchema.safeParse(raw);
+        if (!parsed.success) {
+          json(res, 400, { error: 'Invalid body', details: parsed.error.flatten() });
+          return;
+        }
+        onSpeed(parsed.data.multiplier);
+        json(res, 200, { ok: true, multiplier: parsed.data.multiplier });
       });
       return;
     }

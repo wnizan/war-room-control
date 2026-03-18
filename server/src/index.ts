@@ -5,7 +5,8 @@ import { WsTransport } from './transport/websocket.js';
 import { createRequestHandler } from './api/routes.js';
 
 const PORT = 3001;
-const TICK_MS = 1000;
+const BASE_TICK_MS = 1000;
+let currentTickMs = BASE_TICK_MS;
 
 // Allow override via UNIT_COUNT env var (e.g. UNIT_COUNT=5000 npm start)
 // Clamps to [100, 100_000] to avoid degenerate values
@@ -26,7 +27,7 @@ console.log(`[boot] ${units.size} units ready.`);
 
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
 // ws is declared here so handleRestart (below) can close over it.
-const httpServer = createServer(createRequestHandler(() => units, handleRestart));
+const httpServer = createServer(createRequestHandler(() => units, handleRestart, handleSpeed));
 
 const ws = new WsTransport(httpServer, () => ({
   units: Array.from(units.values()),
@@ -47,22 +48,36 @@ function handleRestart(alphaRatio: number): void {
   console.log(`[restart] Done. ${units.size} units regenerated.`);
 }
 
-// ── Simulation loop ───────────────────────────────────────────────────────────
-setInterval(() => {
-  seq++;
-  const tick = computeTick(units, seq);
-  ws.broadcast(tick);
+// ── Speed handler ─────────────────────────────────────────────────────────────
+function handleSpeed(multiplier: number): void {
+  currentTickMs = Math.round(BASE_TICK_MS / multiplier);
+  console.log(`[speed] x${multiplier} → tick every ${currentTickMs}ms`);
+  restartLoop();
+}
 
-  if (seq % 10 === 0) {
-    const { aliveAlpha, aliveBravo, destroyedAlpha, destroyedBravo } = tick.kpi;
-    console.log(
-      `[tick ${seq}] alive: α${aliveAlpha} β${aliveBravo} ` +
-      `destroyed: α${destroyedAlpha} β${destroyedBravo} ` +
-      `deltas: ${tick.units.length} events: ${tick.events.length} ` +
-      `clients: ${ws.clientCount}`
-    );
-  }
-}, TICK_MS);
+// ── Simulation loop ───────────────────────────────────────────────────────────
+let loopHandle: ReturnType<typeof setInterval> | null = null;
+
+function restartLoop(): void {
+  if (loopHandle !== null) clearInterval(loopHandle);
+  loopHandle = setInterval(() => {
+    seq++;
+    const tick = computeTick(units, seq);
+    ws.broadcast(tick);
+
+    if (seq % 10 === 0) {
+      const { aliveAlpha, aliveBravo, destroyedAlpha, destroyedBravo } = tick.kpi;
+      console.log(
+        `[tick ${seq}] alive: α${aliveAlpha} β${aliveBravo} ` +
+        `destroyed: α${destroyedAlpha} β${destroyedBravo} ` +
+        `deltas: ${tick.units.length} events: ${tick.events.length} ` +
+        `clients: ${ws.clientCount}`
+      );
+    }
+  }, currentTickMs);
+}
+
+restartLoop();
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 httpServer.listen(PORT, () => {
