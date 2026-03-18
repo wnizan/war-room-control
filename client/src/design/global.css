@@ -629,6 +629,37 @@ body {
 .legend-diamond--alpha { background: var(--color-alpha); }
 .legend-diamond--bravo { background: var(--color-bravo); }
 
+/* ── Legend unit type shapes ─────────────────────────────────────── */
+.legend-separator {
+  width: 100%;
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 2px 0;
+}
+.legend-unit-shape {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.55);
+}
+.legend-unit-square {
+  border-radius: 0;
+}
+.legend-unit-diamond {
+  transform: rotate(45deg);
+  width: 7px;
+  height: 7px;
+}
+.legend-unit-triangle {
+  width: 0;
+  height: 0;
+  background: transparent;
+  border-left:   5px solid transparent;
+  border-right:  5px solid transparent;
+  border-bottom: 9px solid rgba(255,255,255,0.55);
+  flex-shrink: 0;
+}
+
 /* ── KPI zone control ───────────────────────────────────────────── */
 .kpi-value.neutral { color: var(--color-text-muted); }
 

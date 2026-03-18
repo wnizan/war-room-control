@@ -1,4 +1,5 @@
 import type { Unit } from '@shared/types';
+import { UNIT_MAX_HP } from '../constants/unitStats';
 
 interface Props {
   unit: Unit;
@@ -24,7 +25,8 @@ function sectorOf(unit: Unit): string {
 }
 
 export function UnitTooltip({ unit, x, y }: Props) {
-  const hpPct     = unit.health;
+  const maxHp     = UNIT_MAX_HP[unit.type];
+  const hpPct     = (unit.health / maxHp) * 100;
   const isAlpha   = unit.team === 'alpha';
   const teamColor = isAlpha ? '#3b82f6' : '#ef4444';
   const hpColor   = hpPct > 50 ? '#22c55e' : hpPct > 25 ? '#f97316' : '#ef4444';

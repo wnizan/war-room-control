@@ -1,4 +1,5 @@
 import type { Unit, UnitTeam, UnitType } from '../../../shared/types.js';
+import { UNIT_SPAWN_HP_MIN, UNIT_MAX_HP } from './unitStats.js';
 
 const UNIT_TYPES: UnitType[] = ['infantry', 'vehicle', 'air'];
 
@@ -84,7 +85,7 @@ export function generateUnits(count: number, alphaRatio = 0.5): Map<string, Unit
       type,
       team,
       status: 'idle',
-      health: ri(60, 100),
+      health: ri(UNIT_SPAWN_HP_MIN[type], UNIT_MAX_HP[type]),
       x: pos.x,
       y: pos.y,
     });

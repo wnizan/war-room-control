@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { selectionStore } from '../store/selectionStore';
 import { unitsStore } from '../store/unitsStore';
 import type { Unit } from '@shared/types';
+import { UNIT_MAX_HP } from '../constants/unitStats';
 
 const STATUS_LABEL: Record<string, string> = {
   active:    'ACTIVE',
@@ -27,7 +28,8 @@ export function UnitDetailPanel() {
 
   const isAlpha   = unit?.team === 'alpha';
   const teamColor = isAlpha ? '#3b82f6' : '#ef4444';
-  const hpPct     = unit?.health ?? 0;
+  const maxHp     = unit ? UNIT_MAX_HP[unit.type] : 100;
+  const hpPct     = unit ? (unit.health / maxHp) * 100 : 0;
   const hpColor   = hpPct > 50 ? '#22c55e' : hpPct > 25 ? '#f97316' : '#ef4444';
 
   return (
@@ -62,7 +64,7 @@ export function UnitDetailPanel() {
                 style={{ width: `${hpPct}%`, background: hpColor }}
               />
             </div>
-            <span className="unit-detail-value">{unit.health} / 100</span>
+            <span className="unit-detail-value">{unit.health} / {maxHp}</span>
           </div>
           <div className="unit-detail-row">
             <span className="unit-detail-label">Sector</span>

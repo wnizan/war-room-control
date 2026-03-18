@@ -1,13 +1,16 @@
 import { randomUUID } from 'crypto';
 import type { Unit, UnitDelta, TickUpdate, GameEvent, KPISummary } from '../../../shared/types.js';
+import {
+  TYPE_MOVE_MULT, TYPE_DMG, TYPE_ATTACK_RANGE_SQ,
+  TYPE_CAN_ATTACK, TYPE_CAN_HEAL, UNIT_MAX_HP,
+} from './unitStats.js';
 
 const TICK_MIN  = 200;
 const TICK_MAX  = 350;
 const EVENT_CAP = 25;
 
-// Normal random move delta
+// Base move deltas — multiplied per unit type by TYPE_MOVE_MULT
 const MOVE_RANDOM  = 0.010;
-// Advance toward enemy objective (conquest pull)
 const MOVE_ADVANCE = 0.003;
 
 // Enemy objectives: alpha advances toward bravo HQ, bravo toward alpha HQ
@@ -62,19 +65,22 @@ function sampleIds(ids: string[], count: number): string[] {
 }
 
 // Move a unit: mix of random drift + directional advance toward objective
+// Speed is scaled by TYPE_MOVE_MULT per unit type
 function advanceMove(unit: Unit): { nx: number; ny: number } {
-  const obj = unit.team === 'alpha' ? ALPHA_OBJECTIVE : BRAVO_OBJECTIVE;
-  const dx = obj.x - unit.x;
-  const dy = obj.y - unit.y;
+  const obj  = unit.team === 'alpha' ? ALPHA_OBJECTIVE : BRAVO_OBJECTIVE;
+  const mult = TYPE_MOVE_MULT[unit.type];
+  const dx   = obj.x - unit.x;
+  const dy   = obj.y - unit.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
-  // Advance component (normalised direction * step), only when not already close
-  const advX = dist > 0.05 ? (dx / dist) * MOVE_ADVANCE : 0;
-  const advY = dist > 0.05 ? (dy / dist) * MOVE_ADVANCE : 0;
+  const advMag = MOVE_ADVANCE * mult;
+  const rndMag = MOVE_RANDOM  * mult;
 
-  // Random component
-  const rndX = (Math.random() - 0.5) * MOVE_RANDOM;
-  const rndY = (Math.random() - 0.5) * MOVE_RANDOM;
+  const advX = dist > 0.05 ? (dx / dist) * advMag : 0;
+  const advY = dist > 0.05 ? (dy / dist) * advMag : 0;
+
+  const rndX = (Math.random() - 0.5) * rndMag;
+  const rndY = (Math.random() - 0.5) * rndMag;
 
   return {
     nx: clamp(unit.x + advX + rndX, 0, 1),
@@ -114,38 +120,51 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
       deltaMap.set(id, { ...deltaMap.get(id), id, x: nx, y: ny, status: 'moving' });
 
     } else if (r < 0.58) {
-      // Attack nearest enemy (proximity-based — pulses appear at actual contact zones)
-      const enemyPool = unit.team === 'alpha' ? aliveBravo : aliveAlpha;
-      const targetId  = pickNearest(units, unit, enemyPool, 12);
+      // Attack — filter by type restrictions, then check range
+      const rawPool   = unit.team === 'alpha' ? aliveBravo : aliveAlpha;
+      const canAttack = TYPE_CAN_ATTACK[unit.type];
+      const enemyPool = rawPool.filter(eid => {
+        const e = units.get(eid);
+        return e !== undefined && canAttack.has(e.type);
+      });
+      const targetId = pickNearest(units, unit, enemyPool, 12);
       if (targetId !== undefined) {
         const target = units.get(targetId);
         if (target && target.status !== 'destroyed') {
-          const dmg   = ri(5, 20);
-          const newHp = Math.max(0, target.health - dmg);
-          target.health = newHp;
+          // Range check — only attack if within type-specific range
+          const dx = target.x - unit.x;
+          const dy = target.y - unit.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 <= TYPE_ATTACK_RANGE_SQ[unit.type]) {
+            const [dMin, dMax] = TYPE_DMG[unit.type];
+            const dmg   = ri(dMin, dMax);
+            const newHp = Math.max(0, target.health - dmg);
+            target.health = newHp;
 
-          if (newHp === 0) {
-            target.status = 'destroyed';
-            deltaMap.set(targetId, { ...deltaMap.get(targetId), id: targetId, health: 0, status: 'destroyed' });
-            if (events.length < EVENT_CAP) {
-              events.push({ id: randomUUID(), type: 'destroyed', timestamp, sourceId: id, targetId, detail: `${unit.name} destroyed ${target.name}` });
+            if (newHp === 0) {
+              target.status = 'destroyed';
+              deltaMap.set(targetId, { ...deltaMap.get(targetId), id: targetId, health: 0, status: 'destroyed' });
+              if (events.length < EVENT_CAP) {
+                events.push({ id: randomUUID(), type: 'destroyed', timestamp, sourceId: id, targetId, detail: `${unit.name} destroyed ${target.name}` });
+              }
+            } else {
+              deltaMap.set(targetId, { ...deltaMap.get(targetId), id: targetId, health: newHp });
+              if (events.length < EVENT_CAP) {
+                events.push({ id: randomUUID(), type: 'attack', timestamp, sourceId: id, targetId, detail: `${unit.name} hit ${target.name} -${dmg}hp` });
+              }
             }
-          } else {
-            deltaMap.set(targetId, { ...deltaMap.get(targetId), id: targetId, health: newHp });
-            if (events.length < EVENT_CAP) {
-              events.push({ id: randomUUID(), type: 'attack', timestamp, sourceId: id, targetId, detail: `${unit.name} hit ${target.name} -${dmg}hp` });
-            }
+            unit.status = 'attacking';
+            deltaMap.set(id, { ...deltaMap.get(id), id, status: 'attacking' });
           }
-          unit.status = 'attacking';
-          deltaMap.set(id, { ...deltaMap.get(id), id, status: 'attacking' });
         }
       }
 
     } else if (r < 0.68) {
-      // Heal
-      if (unit.health < 100) {
+      // Heal — air units cannot heal; max HP is type-specific
+      const maxHp = UNIT_MAX_HP[unit.type];
+      if (TYPE_CAN_HEAL[unit.type] && unit.health < maxHp) {
         const heal  = ri(3, 10);
-        const newHp = Math.min(100, unit.health + heal);
+        const newHp = Math.min(maxHp, unit.health + heal);
         unit.health = newHp; unit.status = 'active';
         deltaMap.set(id, { ...deltaMap.get(id), id, health: newHp, status: 'active' });
         if (events.length < EVENT_CAP) {

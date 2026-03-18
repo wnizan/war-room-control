@@ -198,6 +198,19 @@ export function TacticalMap() {
           <div className="legend-diamond legend-diamond--bravo" />
           <span>Bravo Base</span>
         </div>
+        <div className="legend-separator" />
+        <div className="legend-item">
+          <div className="legend-unit-shape legend-unit-square" />
+          <span>Infantry</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-unit-shape legend-unit-diamond" />
+          <span>Vehicle</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-unit-triangle" />
+          <span>Air</span>
+        </div>
       </div>
     </div>
   );

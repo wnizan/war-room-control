@@ -784,16 +784,27 @@ export function startRenderLoop(
     // Layer 3: Hotspots
     drawHotspots(ctx, W, H, now);
 
-    // Layer 4: Units — single classification pass, then batch render per bucket
-    const size3 = Math.max(1, Math.round(2 * scale));
-    const size4 = Math.max(1, Math.round(2 * scale));
-    const size1 = 1;
+    // Layer 4: Units — 13 buckets (type × status/team), batch draw per bucket
+    const szSq  = Math.max(1, Math.round(2   * scale));   // infantry square
+    const szDia = Math.max(1, Math.round(2   * scale));   // vehicle diamond half-size
+    const szTri = Math.max(2, Math.round(2.5 * scale));   // air triangle (slightly larger)
+    const szAtk = Math.max(1, Math.round(2   * scale));   // attacking size
+    const sz1   = 1;                                       // dead
 
-    const bAlpha:   number[] = [];
-    const bBravo:   number[] = [];
-    const bDamaged: number[] = [];
-    const bAttack:  number[] = [];
-    const bDead:    number[] = [];
+    // [x, y, x, y, ...] flat arrays per bucket
+    const bDead:          number[] = [];
+    const bAtkSquare:     number[] = [];
+    const bAtkDiamond:    number[] = [];
+    const bAtkTriangle:   number[] = [];
+    const bDmgSquare:     number[] = [];
+    const bDmgDiamond:    number[] = [];
+    const bDmgTriangle:   number[] = [];
+    const bAlphaSquare:   number[] = [];
+    const bAlphaDiamond:  number[] = [];
+    const bAlphaTriangle: number[] = [];
+    const bBravoSquare:   number[] = [];
+    const bBravoDiamond:  number[] = [];
+    const bBravoTriangle: number[] = [];
 
     for (const u of units.values()) {
       const [sx, sy] = toScreen(u.x, u.y, W, H);
@@ -801,35 +812,86 @@ export function startRenderLoop(
       if (u.status === 'destroyed') {
         bDead.push(px, py);
       } else if (u.status === 'attacking') {
-        bAttack.push(px, py);
+        if (u.type === 'infantry')     bAtkSquare.push(px, py);
+        else if (u.type === 'vehicle') bAtkDiamond.push(px, py);
+        else                           bAtkTriangle.push(px, py);
       } else if (u.health < LOW_HEALTH_THRESHOLD) {
-        bDamaged.push(px, py);
+        if (u.type === 'infantry')     bDmgSquare.push(px, py);
+        else if (u.type === 'vehicle') bDmgDiamond.push(px, py);
+        else                           bDmgTriangle.push(px, py);
       } else if (u.team === 'alpha') {
-        bAlpha.push(px, py);
+        if (u.type === 'infantry')     bAlphaSquare.push(px, py);
+        else if (u.type === 'vehicle') bAlphaDiamond.push(px, py);
+        else                           bAlphaTriangle.push(px, py);
       } else {
-        bBravo.push(px, py);
+        if (u.type === 'infantry')     bBravoSquare.push(px, py);
+        else if (u.type === 'vehicle') bBravoDiamond.push(px, py);
+        else                           bBravoTriangle.push(px, py);
       }
     }
 
-    ctx.fillStyle = COLOR_ALPHA;
-    for (let i = 0; i < bAlpha.length; i += 2)
-      ctx.fillRect(bAlpha[i]!, bAlpha[i + 1]!, size3, size3);
+    // Helper: draw all squares in a bucket via fillRect
+    function drawSquares(bucket: number[], sz: number): void {
+      for (let i = 0; i < bucket.length; i += 2)
+        ctx.fillRect(bucket[i]!, bucket[i + 1]!, sz, sz);
+    }
 
-    ctx.fillStyle = COLOR_BRAVO;
-    for (let i = 0; i < bBravo.length; i += 2)
-      ctx.fillRect(bBravo[i]!, bBravo[i + 1]!, size3, size3);
+    // Helper: draw all diamonds (vehicle) via batched path
+    function drawDiamonds(bucket: number[], h: number): void {
+      if (bucket.length === 0) return;
+      ctx.beginPath();
+      for (let i = 0; i < bucket.length; i += 2) {
+        const cx = bucket[i]!, cy = bucket[i + 1]!;
+        ctx.moveTo(cx,     cy - h);
+        ctx.lineTo(cx + h, cy);
+        ctx.lineTo(cx,     cy + h);
+        ctx.lineTo(cx - h, cy);
+        ctx.closePath();
+      }
+      ctx.fill();
+    }
 
-    ctx.fillStyle = COLOR_DAMAGED;
-    for (let i = 0; i < bDamaged.length; i += 2)
-      ctx.fillRect(bDamaged[i]!, bDamaged[i + 1]!, size3, size3);
+    // Helper: draw all triangles (air) via batched path — apex up
+    function drawTriangles(bucket: number[], h: number): void {
+      if (bucket.length === 0) return;
+      ctx.beginPath();
+      for (let i = 0; i < bucket.length; i += 2) {
+        const cx = bucket[i]!, cy = bucket[i + 1]!;
+        ctx.moveTo(cx,     cy - h);   // apex
+        ctx.lineTo(cx + h, cy + h);   // bottom-right
+        ctx.lineTo(cx - h, cy + h);   // bottom-left
+        ctx.closePath();
+      }
+      ctx.fill();
+    }
 
-    ctx.fillStyle = COLOR_ATTACK;
-    for (let i = 0; i < bAttack.length; i += 2)
-      ctx.fillRect(bAttack[i]!, bAttack[i + 1]!, size4, size4);
-
+    // Draw dead (1px squares, all types)
     ctx.fillStyle = COLOR_DEAD;
-    for (let i = 0; i < bDead.length; i += 2)
-      ctx.fillRect(bDead[i]!, bDead[i + 1]!, size1, size1);
+    drawSquares(bDead, sz1);
+
+    // Draw attacking units
+    ctx.fillStyle = COLOR_ATTACK;
+    drawSquares(bAtkSquare, szAtk);
+    drawDiamonds(bAtkDiamond, szAtk);
+    drawTriangles(bAtkTriangle, szAtk);
+
+    // Draw damaged units
+    ctx.fillStyle = COLOR_DAMAGED;
+    drawSquares(bDmgSquare, szSq);
+    drawDiamonds(bDmgDiamond, szDia);
+    drawTriangles(bDmgTriangle, szTri);
+
+    // Draw alpha team
+    ctx.fillStyle = COLOR_ALPHA;
+    drawSquares(bAlphaSquare, szSq);
+    drawDiamonds(bAlphaDiamond, szDia);
+    drawTriangles(bAlphaTriangle, szTri);
+
+    // Draw bravo team
+    ctx.fillStyle = COLOR_BRAVO;
+    drawSquares(bBravoSquare, szSq);
+    drawDiamonds(bBravoDiamond, szDia);
+    drawTriangles(bBravoTriangle, szTri);
 
     // Layer 5: Pulses
     drawPulses(ctx, W, H, now);
