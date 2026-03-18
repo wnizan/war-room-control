@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSyncExternalStore } from 'react';
 import { unitsStore } from '../store/unitsStore';
 import { selectionStore } from '../store/selectionStore';
@@ -6,10 +6,28 @@ import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom
 import { UnitTooltip } from '../panels/UnitTooltip';
 import type { Unit } from '@shared/types';
 
+const SPEED_OPTIONS = [0.5, 1, 2, 5] as const;
+type SpeedMultiplier = typeof SPEED_OPTIONS[number];
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
 export function TacticalMap() {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const dragMovedRef = useRef(false);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [speed, setSpeed] = useState<SpeedMultiplier>(1);
+
+  const handleSpeed = useCallback(async (multiplier: SpeedMultiplier) => {
+    setSpeed(multiplier);
+    try {
+      await fetch(`${API_BASE}/api/speed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ multiplier }),
+      });
+    } catch (err) {
+      console.error('[speed] fetch failed', err);
+    }
+  }, []);
   const selectedId  = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSnapshot);
   const snapshot    = useSyncExternalStore(unitsStore.subscribe, unitsStore.getSnapshot);
   const selectedUnit: Unit | null = selectedId != null ? (snapshot.ref.get(selectedId) ?? null) : null;
@@ -119,6 +137,17 @@ export function TacticalMap() {
         {tooltipPos !== null && selectedUnit !== null && (
           <UnitTooltip unit={selectedUnit} x={tooltipPos.x} y={tooltipPos.y} />
         )}
+        <div className="map-speed-overlay">
+          {SPEED_OPTIONS.map(s => (
+            <button
+              key={s}
+              className={`speed-btn${speed === s ? ' active' : ''}`}
+              onClick={() => handleSpeed(s)}
+            >
+              {s}x
+            </button>
+          ))}
+        </div>
         <div className="map-controls">
           <label className="map-control-label">Size</label>
           <input
