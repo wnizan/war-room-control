@@ -30,38 +30,85 @@ function pickRandom<T>(arr: T[]): T | undefined {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Sample up to `sampleSize` random enemies, return the closest one.
-// O(sampleSize) instead of O(n) — avoids scanning all 10k enemies per attacker.
-function pickNearest(
+// ---------------------------------------------------------------------------
+// Module-level reusable buffers — zero allocation per tick
+// ---------------------------------------------------------------------------
+const _seenScratch  = new Set<number>();
+const _seenScratch2 = new Set<number>();
+const _sampleResult: string[] = [];
+
+const _aliveAlpha: string[] = [];
+const _aliveBravo: string[] = [];
+const _alphaInfantry: string[] = [];
+const _alphaVehicle:  string[] = [];
+const _alphaAir:      string[] = [];
+const _bravoInfantry: string[] = [];
+const _bravoVehicle:  string[] = [];
+const _bravoAir:      string[] = [];
+
+// Sample up to `sampleSize` random enemies across multiple pools, return the closest one.
+function pickNearestFromPools(
   units: Map<string, Unit>,
   attacker: Unit,
-  enemyIds: string[],
+  pools: string[][],
   sampleSize: number,
 ): string | undefined {
-  if (enemyIds.length === 0) return undefined;
-  const sample = sampleIds(enemyIds, Math.min(sampleSize, enemyIds.length));
+  let total = 0;
+  for (const p of pools) total += p.length;
+  if (total === 0) return undefined;
+
+  const n = Math.min(sampleSize, total);
   let bestId: string | undefined;
   let bestDist = Infinity;
-  for (const id of sample) {
-    const e = units.get(id);
-    if (!e || e.status === 'destroyed') continue;
-    const dx = e.x - attacker.x, dy = e.y - attacker.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < bestDist) { bestDist = d2; bestId = id; }
+
+  _seenScratch.clear();
+  let attempts = 0;
+  const maxAttempts = n * 3;
+  while (_seenScratch.size < n && attempts < maxAttempts) {
+    attempts++;
+    const r = Math.floor(Math.random() * total);
+    if (_seenScratch.has(r)) continue;
+    _seenScratch.add(r);
+
+    let idx = r;
+    for (const pool of pools) {
+      if (idx < pool.length) {
+        const id = pool[idx]!;
+        const e = units.get(id);
+        if (e && e.status !== 'destroyed') {
+          const dx = e.x - attacker.x, dy = e.y - attacker.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bestDist) { bestDist = d2; bestId = id; }
+        }
+        break;
+      }
+      idx -= pool.length;
+    }
   }
   return bestId;
 }
 
-function sampleIds(ids: string[], count: number): string[] {
-  const arr = ids.slice();
-  const n = Math.min(count, arr.length);
-  for (let i = 0; i < n; i++) {
-    const j = i + Math.floor(Math.random() * (arr.length - i));
-    const tmp = arr[i] as string;
-    arr[i] = arr[j] as string;
-    arr[j] = tmp;
+// Sample n distinct ids from multiple pools without materializing a combined array
+function sampleFromPools(pools: string[][], n: number): string[] {
+  let total = 0;
+  for (const p of pools) total += p.length;
+  const count = Math.min(n, total);
+  _sampleResult.length = 0;
+  _seenScratch2.clear();
+  let attempts = 0;
+  const maxAttempts = count * 4;
+  while (_sampleResult.length < count && attempts < maxAttempts) {
+    attempts++;
+    const r = Math.floor(Math.random() * total);
+    if (_seenScratch2.has(r)) continue;
+    _seenScratch2.add(r);
+    let idx = r;
+    for (const pool of pools) {
+      if (idx < pool.length) { _sampleResult.push(pool[idx]!); break; }
+      idx -= pool.length;
+    }
   }
-  return arr.slice(0, n);
+  return _sampleResult;
 }
 
 // Move a unit: mix of random drift + directional advance toward objective
@@ -91,27 +138,33 @@ function advanceMove(unit: Unit): { nx: number; ny: number } {
 export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
   const timestamp = Date.now();
 
-  // Build per-team AND per-type pools once — avoids O(n) filter per attacker
-  const aliveAlpha: string[] = [];
-  const aliveBravo: string[] = [];
-  const aliveAlphaByType: Record<string, string[]> = { infantry: [], vehicle: [], air: [] };
-  const aliveBravoByType: Record<string, string[]> = { infantry: [], vehicle: [], air: [] };
+  // Reset reusable buffers (no allocation)
+  _aliveAlpha.length = 0; _aliveBravo.length = 0;
+  _alphaInfantry.length = 0; _alphaVehicle.length = 0; _alphaAir.length = 0;
+  _bravoInfantry.length = 0; _bravoVehicle.length = 0; _bravoAir.length = 0;
 
   for (const [id, u] of units) {
     if (u.status !== 'destroyed') {
       if (u.team === 'alpha') {
-        aliveAlpha.push(id);
-        aliveAlphaByType[u.type]!.push(id);
+        _aliveAlpha.push(id);
+        if (u.type === 'infantry') _alphaInfantry.push(id);
+        else if (u.type === 'vehicle') _alphaVehicle.push(id);
+        else _alphaAir.push(id);
       } else {
-        aliveBravo.push(id);
-        aliveBravoByType[u.type]!.push(id);
+        _aliveBravo.push(id);
+        if (u.type === 'infantry') _bravoInfantry.push(id);
+        else if (u.type === 'vehicle') _bravoVehicle.push(id);
+        else _bravoAir.push(id);
       }
     }
   }
 
-  const allAlive  = [...aliveAlpha, ...aliveBravo];
+  // Typed pool lookups — references only, no object allocation
+  const aliveAlphaByType = { infantry: _alphaInfantry, vehicle: _alphaVehicle, air: _alphaAir };
+  const aliveBravoByType = { infantry: _bravoInfantry, vehicle: _bravoVehicle, air: _bravoAir };
+
   const tickCount = ri(TICK_MIN, TICK_MAX);
-  const selected  = sampleIds(allAlive, tickCount);
+  const selected = sampleFromPools([_aliveAlpha, _aliveBravo], tickCount);
 
   const deltaMap = new Map<string, UnitDelta>();
   const events: GameEvent[] = [];
@@ -132,12 +185,12 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
       // Attack — use pre-built per-type pools (no filter per attacker)
       const enemyByType = unit.team === 'alpha' ? aliveBravoByType : aliveAlphaByType;
       const canAttack   = TYPE_CAN_ATTACK[unit.type];
-      // Concat only the allowed type pools (max 3 lookups, no iteration)
-      const enemyPool: string[] = [];
-      if (canAttack.has('infantry')) enemyPool.push(...enemyByType['infantry']!);
-      if (canAttack.has('vehicle'))  enemyPool.push(...enemyByType['vehicle']!);
-      if (canAttack.has('air'))      enemyPool.push(...enemyByType['air']!);
-      const targetId = pickNearest(units, unit, enemyPool, 12);
+      // Build pool references only — no array copy, no spread
+      const pools: string[][] = [];
+      if (canAttack.has('infantry')) pools.push(enemyByType['infantry']!);
+      if (canAttack.has('vehicle'))  pools.push(enemyByType['vehicle']!);
+      if (canAttack.has('air'))      pools.push(enemyByType['air']!);
+      const targetId = pickNearestFromPools(units, unit, pools, 12);
       if (targetId !== undefined) {
         const target = units.get(targetId);
         if (target && target.status !== 'destroyed') {
@@ -190,12 +243,29 @@ export function computeTick(units: Map<string, Unit>, seq: number): TickUpdate {
     }
   }
 
+  // KPI: use already-built buffers — no extra loop over 20k units
+  const aliveA = _aliveAlpha.length;
+  const aliveB = _aliveBravo.length;
+  const totalU = units.size;
+  const totalAlive = aliveA + aliveB;
+  const kpi: KPISummary = {
+    seq,
+    aliveAlpha: aliveA,
+    aliveBravo: aliveB,
+    destroyedAlpha: totalU / 2 - aliveA,
+    destroyedBravo: totalU / 2 - aliveB,
+    zoneControl: {
+      alpha: totalAlive > 0 ? Math.round((aliveA / totalAlive) * 100) : 50,
+      bravo: totalAlive > 0 ? Math.round((aliveB / totalAlive) * 100) : 50,
+    },
+  };
+
   return {
     seq,
     timestamp,
     units: Array.from(deltaMap.values()),
     events,
-    kpi: computeKPI(units, seq),
+    kpi,
   };
 }
 

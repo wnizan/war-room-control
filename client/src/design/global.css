@@ -260,11 +260,25 @@ body {
   overflow: hidden;
 }
 
+.tactical-map-webgl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
 .tactical-map-canvas {
   width: 100%;
   height: 100%;
   display: block;
-  background: #0d1117;
+}
+
+.tactical-map-overlay {
+  position: absolute;
+  inset: 0;
+  background: transparent;
 }
 
 /* ── Speed overlay (bottom-left of map) ─────────────────────────── */

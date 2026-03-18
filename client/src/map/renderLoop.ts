@@ -115,6 +115,8 @@ const ZONE_CTRL_CONTEST = 'rgba(251,191,36,0.9)';
 
 const LOW_HEALTH_THRESHOLD = 25;
 
+// (Unit bucket arrays removed — WebGL renderer handles unit drawing)
+
 // ---------------------------------------------------------------------------
 // Font constants — defined once, reused everywhere to avoid repeated parsing
 // ---------------------------------------------------------------------------
@@ -186,7 +188,7 @@ function sectorOf(u: Unit): SectorId {
 
 let cachedSectorDominance: Record<SectorId, 'alpha' | 'bravo' | 'neutral'> | null = null;
 let _sectorLastComputed = 0;
-const SECTOR_THROTTLE_MS = 2000;
+const SECTOR_THROTTLE_MS = 5000;
 
 export function invalidateSectorCache(): void {
   // Throttled — cache expires by time in draw(), not on every delta
@@ -733,10 +735,13 @@ export function startRenderLoop(
   subscribe: (cb: () => void) => UnsubscribeFn,
   getSelectedId: () => string | null,
   subscribeSelection: (cb: () => void) => UnsubscribeFn,
+  webgl: import('./webglRenderer').WebGLUnitRenderer | null = null,
 ): UnsubscribeFn {
   resetRenderState();
 
-  const ctxOrNull = canvas.getContext('2d', { alpha: false });
+  // When WebGL handles units, the overlay canvas must be transparent (alpha: true).
+  // Without WebGL, keep alpha: false for the solid background.
+  const ctxOrNull = canvas.getContext('2d', { alpha: webgl !== null });
   if (!ctxOrNull) return () => { /* no-op */ };
   const ctx: CanvasRenderingContext2D = ctxOrNull;
 
@@ -760,16 +765,29 @@ export function startRenderLoop(
     const units = getMap(), now = performance.now();
     const scale = unitScale, selectedId = getSelectedId();
 
-    // Layer 0: Background
-    ctx.fillStyle = COLOR_BG;
-    ctx.fillRect(0, 0, W, H);
+    // Layer 0: Background — solid fill only when overlay IS the bottom layer (no WebGL)
+    if (webgl === null) {
+      ctx.fillStyle = COLOR_BG;
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      // WebGL canvas is behind us — clear overlay to transparent so WebGL shows through
+      ctx.clearRect(0, 0, W, H);
+    }
 
-    // Layer 0b: Terrain
+    // Layer 0b: Terrain — drawn on overlay when no WebGL; when WebGL is active,
+    // the WebGL canvas provides the solid background, so we draw terrain with reduced opacity
     if (!terrainCanvas || terrainW !== W || terrainH !== H) {
       terrainCanvas = buildTerrainCanvas(W, H);
       terrainW = W; terrainH = H;
     }
-    ctx.drawImage(terrainCanvas, 0, 0);
+    if (webgl === null) {
+      ctx.drawImage(terrainCanvas, 0, 0);
+    } else {
+      // WebGL provides the solid background — terrain is a subtle texture hint only
+      ctx.globalAlpha = 0.18;
+      ctx.drawImage(terrainCanvas, 0, 0);
+      ctx.globalAlpha = 1;
+    }
 
     // Layer 1: Sectors
     if (!cachedSectorDominance || now - _sectorLastComputed > SECTOR_THROTTLE_MS) {
@@ -784,104 +802,10 @@ export function startRenderLoop(
     // Layer 3: Hotspots
     drawHotspots(ctx, W, H, now);
 
-    // Layer 4: Units — 13 buckets (type × status/team), batch draw per bucket
-    const szSq  = Math.max(1, Math.round(2   * scale));   // infantry square
-    const szDia = Math.max(1, Math.round(2   * scale));   // vehicle diamond half-size
-    const szTri = Math.max(2, Math.round(2.5 * scale));   // air triangle (slightly larger)
-    const szAtk = Math.max(1, Math.round(2   * scale));   // attacking size
-    const sz1   = 1;                                       // dead
-
-    // [x, y, x, y, ...] flat arrays per bucket
-    const bDead:          number[] = [];
-    const bAtkSquare:     number[] = [];
-    const bAtkDiamond:    number[] = [];
-    const bAtkTriangle:   number[] = [];
-    const bDmgSquare:     number[] = [];
-    const bDmgDiamond:    number[] = [];
-    const bDmgTriangle:   number[] = [];
-    const bAlphaSquare:   number[] = [];
-    const bAlphaDiamond:  number[] = [];
-    const bAlphaTriangle: number[] = [];
-    const bBravoSquare:   number[] = [];
-    const bBravoDiamond:  number[] = [];
-    const bBravoTriangle: number[] = [];
-
-    for (const u of units.values()) {
-      const [sx, sy] = toScreen(u.x, u.y, W, H);
-      const px = sx | 0, py = sy | 0;
-      if (u.status === 'destroyed') {
-        bDead.push(px, py);
-      } else if (u.status === 'attacking') {
-        if (u.type === 'infantry')     bAtkSquare.push(px, py);
-        else if (u.type === 'vehicle') bAtkDiamond.push(px, py);
-        else                           bAtkTriangle.push(px, py);
-      } else if (u.health < LOW_HEALTH_THRESHOLD) {
-        if (u.type === 'infantry')     bDmgSquare.push(px, py);
-        else if (u.type === 'vehicle') bDmgDiamond.push(px, py);
-        else                           bDmgTriangle.push(px, py);
-      } else if (u.team === 'alpha') {
-        if (u.type === 'infantry')     bAlphaSquare.push(px, py);
-        else if (u.type === 'vehicle') bAlphaDiamond.push(px, py);
-        else                           bAlphaTriangle.push(px, py);
-      } else {
-        if (u.type === 'infantry')     bBravoSquare.push(px, py);
-        else if (u.type === 'vehicle') bBravoDiamond.push(px, py);
-        else                           bBravoTriangle.push(px, py);
-      }
+    // Layer 4: Units — drawn by WebGL renderer (3 instanced draw calls)
+    if (webgl !== null) {
+      webgl.drawUnits(viewport, W, H, Math.max(3, Math.round(4 * scale)));
     }
-
-    // Helper: draw all squares in a bucket via fillRect
-    function drawSquares(bucket: number[], sz: number): void {
-      for (let i = 0; i < bucket.length; i += 2)
-        ctx.fillRect(bucket[i]!, bucket[i + 1]!, sz, sz);
-    }
-
-    // Helper: draw vehicle diamonds as 2 overlapping fillRects (rotated cross) — fast
-    function drawDiamonds(bucket: number[], h: number): void {
-      const h2 = Math.max(1, h >> 1);
-      for (let i = 0; i < bucket.length; i += 2) {
-        const cx = bucket[i]!, cy = bucket[i + 1]!;
-        ctx.fillRect(cx - h,  cy - h2, h * 2, h2 * 2); // horizontal bar
-        ctx.fillRect(cx - h2, cy - h,  h2 * 2, h * 2); // vertical bar
-      }
-    }
-
-    // Helper: draw air units as small dot + top pixel (distinguishable, fast)
-    function drawTriangles(bucket: number[], h: number): void {
-      for (let i = 0; i < bucket.length; i += 2) {
-        const cx = bucket[i]!, cy = bucket[i + 1]!;
-        ctx.fillRect(cx - h, cy - h, h * 2, h * 2); // main dot
-        ctx.fillRect(cx,     cy - h - 1, 1, 2);      // top spike
-      }
-    }
-
-    // Draw dead (1px squares, all types)
-    ctx.fillStyle = COLOR_DEAD;
-    drawSquares(bDead, sz1);
-
-    // Draw attacking units
-    ctx.fillStyle = COLOR_ATTACK;
-    drawSquares(bAtkSquare, szAtk);
-    drawDiamonds(bAtkDiamond, szAtk);
-    drawTriangles(bAtkTriangle, szAtk);
-
-    // Draw damaged units
-    ctx.fillStyle = COLOR_DAMAGED;
-    drawSquares(bDmgSquare, szSq);
-    drawDiamonds(bDmgDiamond, szDia);
-    drawTriangles(bDmgTriangle, szTri);
-
-    // Draw alpha team
-    ctx.fillStyle = COLOR_ALPHA;
-    drawSquares(bAlphaSquare, szSq);
-    drawDiamonds(bAlphaDiamond, szDia);
-    drawTriangles(bAlphaTriangle, szTri);
-
-    // Draw bravo team
-    ctx.fillStyle = COLOR_BRAVO;
-    drawSquares(bBravoSquare, szSq);
-    drawDiamonds(bBravoDiamond, szDia);
-    drawTriangles(bBravoTriangle, szTri);
 
     // Layer 5: Pulses
     drawPulses(ctx, W, H, now);

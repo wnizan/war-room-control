@@ -3,6 +3,8 @@ import { useSyncExternalStore } from 'react';
 import { unitsStore } from '../store/unitsStore';
 import { selectionStore } from '../store/selectionStore';
 import { startRenderLoop, setUnitScale, setZoom, resetZoom, panViewport, getZoom, findNearestUnit, setMapMarker, clearMapMarker, canvasToNorm } from './renderLoop';
+import { createWebGLRenderer } from './webglRenderer';
+import type { WebGLUnitRenderer } from './webglRenderer';
 import { UnitTooltip } from '../panels/UnitTooltip';
 import type { Unit } from '@shared/types';
 
@@ -11,7 +13,8 @@ type SpeedMultiplier = typeof SPEED_OPTIONS[number];
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 export function TacticalMap() {
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);   // overlay (2D, pointer events)
+  const webglRef     = useRef<HTMLCanvasElement>(null);   // WebGL unit layer (behind)
   const dragMovedRef = useRef(false);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const [speed, setSpeed] = useState<SpeedMultiplier>(1);
@@ -33,18 +36,38 @@ export function TacticalMap() {
   const selectedUnit: Unit | null = selectedId != null ? (snapshot.ref.get(selectedId) ?? null) : null;
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvas  = canvasRef.current;
+    const glCanvas = webglRef.current;
+    if (!canvas || !glCanvas) return;
+
+    // Init WebGL renderer (null = fallback to Canvas 2D path)
+    let webgl: WebGLUnitRenderer | null = createWebGLRenderer(glCanvas);
 
     const setSize = () => {
       const rect = canvas.getBoundingClientRect();
-      canvas.width  = Math.floor(rect.width);
-      canvas.height = Math.floor(rect.height);
+      const W = Math.floor(rect.width);
+      const H = Math.floor(rect.height);
+      canvas.width   = W;
+      canvas.height  = H;
+      glCanvas.width  = W;
+      glCanvas.height = H;
+      webgl?.resize(W, H);
     };
     setSize();
 
+    // Load initial snapshot into WebGL buffer
+    if (webgl) webgl.loadSnapshot(unitsStore.getMap());
+
     const ro = new ResizeObserver(setSize);
     ro.observe(canvas);
+
+    // Full reload only on resync snapshot; partial upload on every delta tick
+    const unsubSnapshot = unitsStore.subscribeSnapshot(() => {
+      if (webgl) webgl.loadSnapshot(unitsStore.getMap());
+    });
+    const unsubDeltas = unitsStore.subscribeDelta((deltas) => {
+      if (webgl) webgl.applyDeltas(deltas, unitsStore.getMap());
+    });
 
     const stop = startRenderLoop(
       canvas,
@@ -52,6 +75,7 @@ export function TacticalMap() {
       unitsStore.subscribe,
       selectionStore.getSnapshot,
       selectionStore.subscribe,
+      webgl,
     );
 
     // Drag-to-pan
@@ -66,7 +90,7 @@ export function TacticalMap() {
       lastX = e.clientX;
       lastY = e.clientY;
       cv.setPointerCapture(e.pointerId);
-      cv.style.cursor = 'grabbing';
+      cv.style.cursor = 'move';
     }
 
     function onPointerMove(e: PointerEvent): void {
@@ -82,10 +106,10 @@ export function TacticalMap() {
 
     function onPointerUp(): void {
       dragging = false;
-      cv.style.cursor = 'grab';
+      cv.style.cursor = 'crosshair';
     }
 
-    cv.style.cursor = 'grab';
+    cv.style.cursor = 'crosshair';
     cv.addEventListener('pointerdown', onPointerDown);
     cv.addEventListener('pointermove', onPointerMove);
     cv.addEventListener('pointerup', onPointerUp);
@@ -93,7 +117,11 @@ export function TacticalMap() {
 
     return () => {
       stop();
+      unsubSnapshot();
+      unsubDeltas();
       ro.disconnect();
+      webgl?.destroy();
+      webgl = null;
       cv.removeEventListener('pointerdown', onPointerDown);
       cv.removeEventListener('pointermove', onPointerMove);
       cv.removeEventListener('pointerup', onPointerUp);
@@ -108,9 +136,12 @@ export function TacticalMap() {
         <span className="kpi-sub">20,000 units</span>
       </div>
       <div className="map-container">
+        {/* WebGL canvas — unit layer, behind everything, no pointer events */}
+        <canvas ref={webglRef} className="tactical-map-webgl" />
+        {/* Overlay canvas — terrain/sectors/bases/hotspots/pulses/selection, receives pointer events */}
         <canvas
           ref={canvasRef}
-          className="tactical-map-canvas"
+          className="tactical-map-canvas tactical-map-overlay"
           onWheel={e => { e.preventDefault(); setZoom(e.deltaY < 0 ? 0.15 : -0.15); }}
           onClick={(e) => {
             if (dragMovedRef.current) return;

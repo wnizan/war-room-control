@@ -20,9 +20,13 @@ const STATUS_OPTIONS: Array<{ value: Filters['status']; label: string }> = [
   { value: 'destroyed', label: 'Destroyed' },
 ];
 
+const UNITS_LIST_LIMIT = 500;
+
 function applyFilters(map: Map<string, Unit>, filters: Filters): Unit[] {
   const out: Unit[] = [];
   const nameLower = filters.name.toLowerCase();
+  const filtered = filters.team !== 'all' || filters.status !== 'all' ||
+    filters.healthMin > 0 || filters.healthMax < 100 || nameLower.length > 0;
 
   for (const u of map.values()) {
     if (filters.team   !== 'all' && u.team   !== filters.team)   continue;
@@ -30,6 +34,8 @@ function applyFilters(map: Map<string, Unit>, filters: Filters): Unit[] {
     if (u.health < filters.healthMin || u.health > filters.healthMax) continue;
     if (nameLower && !u.name.toLowerCase().includes(nameLower)) continue;
     out.push(u);
+    // Cap unfiltered list to avoid heavy React reconciliation on 20k items
+    if (!filtered && out.length >= UNITS_LIST_LIMIT) break;
   }
   return out;
 }
@@ -86,8 +92,14 @@ export function UnitsPanel() {
   );
 
   useEffect(() => {
+    let rafPending = false;
     return unitsStore.subscribe(() => {
-      setUnits(applyFilters(unitsStore.getMap(), filtersRef.current));
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        setUnits(applyFilters(unitsStore.getMap(), filtersRef.current));
+      });
     });
   }, []);
 

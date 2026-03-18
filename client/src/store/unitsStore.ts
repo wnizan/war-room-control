@@ -1,6 +1,7 @@
 import type { Unit, UnitDelta } from '@shared/types';
 
 type Listener = () => void;
+type DeltaListener = (deltas: UnitDelta[]) => void;
 type Snapshot = { ref: Map<string, Unit>; version: number };
 
 class UnitsStore {
@@ -8,12 +9,26 @@ class UnitsStore {
   private _seq = -1;
   private _version = 0;
   private _listeners = new Set<Listener>();
+  private _deltaListeners = new Set<DeltaListener>();
+  private _snapshotListeners = new Set<Listener>();
   private _snapshot: Snapshot = { ref: this._map, version: 0 };
 
   /** For useSyncExternalStore — new reference on every update */
   subscribe = (listener: Listener): (() => void) => {
     this._listeners.add(listener);
     return () => { this._listeners.delete(listener); };
+  };
+
+  /** Called with raw deltas after the map is mutated — for WebGL partial uploads */
+  subscribeDelta = (listener: DeltaListener): (() => void) => {
+    this._deltaListeners.add(listener);
+    return () => { this._deltaListeners.delete(listener); };
+  };
+
+  /** Called only when a full snapshot arrives (resync) — for WebGL full reload */
+  subscribeSnapshot = (listener: Listener): (() => void) => {
+    this._snapshotListeners.add(listener);
+    return () => { this._snapshotListeners.delete(listener); };
   };
 
   getSnapshot = (): Snapshot => this._snapshot;
@@ -24,27 +39,15 @@ class UnitsStore {
   getSeq = (): number => this._seq;
 
   applySnapshot(units: Unit[], seq: number): void {
-    // Process in chunks to avoid a single long task blocking the main thread.
-    const CHUNK = 2000;
-    const newMap = new Map<string, Unit>();
-    let i = 0;
-
-    const processChunk = (): void => {
-      const end = Math.min(i + CHUNK, units.length);
-      for (; i < end; i++) {
-        const u = units[i];
-        newMap.set(u.id, u);
-      }
-      if (i < units.length) {
-        setTimeout(processChunk, 0);
-      } else {
-        this._map = newMap;
-        this._seq = seq;
-        this._bump();
-      }
-    };
-
-    processChunk();
+    // Reuse existing map — clear and repopulate to avoid allocating a new 20k-entry Map.
+    // This keeps GC pressure low and avoids a heap spike from two live Maps.
+    this._map.clear();
+    for (const u of units) {
+      this._map.set(u.id, u);
+    }
+    this._seq = seq;
+    for (const l of this._snapshotListeners) l();
+    this._bump();
   }
 
   /** Returns true if seq gap detected — caller should trigger resync */
@@ -63,6 +66,7 @@ class UnitsStore {
       if (delta.y !== undefined) unit.y = delta.y;
     }
     this._seq = seq;
+    for (const l of this._deltaListeners) l(deltas);
     this._bump();
     return false;
   }
