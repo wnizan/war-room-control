@@ -132,21 +132,24 @@ export default function App() {
             <span className="app-header-subtitle">Battlefield Operations Dashboard</span>
           </div>
         </div>
+        <div className="app-header-controls">
+          <span className="speed-label">SPEED</span>
+          <div className="speed-btns">
+            {SPEED_OPTIONS.map(s => (
+              <button
+                key={s}
+                className={`speed-btn${speed === s ? ' active' : ''}`}
+                onClick={() => handleSpeed(s)}
+              >
+                {s}x
+              </button>
+            ))}
+          </div>
+        </div>
         <img src="/WR_ICON.png" alt="War Room" className="app-header-icon" />
       </header>
       <div className="kpi-row">
         <KpiStrip />
-        <div className="speed-btns">
-          {SPEED_OPTIONS.map(s => (
-            <button
-              key={s}
-              className={`speed-btn${speed === s ? ' active' : ''}`}
-              onClick={() => handleSpeed(s)}
-            >
-              {s}x
-            </button>
-          ))}
-        </div>
         <button className="restart-trigger-btn" onClick={() => setShowRestart(true)} title="Restart simulation">
           ↺ Restart
         </button>
